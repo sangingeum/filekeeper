@@ -16,6 +16,7 @@ from ..errors import (
     FilekeeperError,
     NotAFileError,
     ValidationError,
+    storage_failure,
 )
 from ..models import (
     DirectoryEntry,
@@ -61,14 +62,17 @@ def _read_window(
     if resolved.absolute.is_dir():
         raise NotAFileError("path is a directory, not a file", details={"path": path})
 
-    size = resolved.absolute.stat().st_size
     limit = handle.config.max_read_bytes if max_bytes is None else max_bytes
     if limit <= 0:
         raise ValidationError("max_bytes must be positive", details={"max_bytes": limit})
     limit = min(limit, handle.config.max_read_bytes)
 
-    with resolved.absolute.open("rb") as file_handle:
-        data = file_handle.read(limit)
+    try:
+        size = resolved.absolute.stat().st_size
+        with resolved.absolute.open("rb") as file_handle:
+            data = file_handle.read(limit)
+    except OSError as exc:
+        raise storage_failure("read", resolved.relative, exc) from exc
     truncated = size > len(data)
 
     text, profile = decode_bytes(data, encoding=encoding, partial=truncated, path=resolved.relative)
@@ -139,7 +143,7 @@ def read_file(
         returned_line_count=len(selected),
         total_lines=total_lines,
         size_bytes=size,
-        content_hash=hash_file(resolved.absolute),
+        content_hash=hash_file(resolved.absolute, display_path=resolved.relative),
         encoding=profile.encoding,
         newline=profile.newline,
         has_bom=profile.has_bom,
@@ -231,7 +235,9 @@ def list_directory(
         try:
             children = sorted(directory.iterdir(), key=lambda item: item.name)
         except OSError as exc:
-            raise ValidationError(f"cannot list directory: {exc}", details={"path": path}) from exc
+            raise storage_failure(
+                "list directory", _relative(handle, directory) or ".", exc
+            ) from exc
         for child in children:
             if len(entries) >= limit:
                 truncated = True
@@ -253,12 +259,16 @@ def list_directory(
                 kind = "other"
             relative = _relative(handle, child)
             if matches(relative, child.name):
+                try:
+                    size_bytes = child.lstat().st_size
+                except OSError as exc:
+                    raise storage_failure("inspect", relative, exc) from exc
                 entries.append(
                     DirectoryEntry(
                         path=relative,
                         name=child.name,
                         kind=kind,
-                        size_bytes=child.lstat().st_size,
+                        size_bytes=size_bytes,
                         is_symlink=is_symlink,
                     )
                 )
@@ -280,7 +290,10 @@ def get_file_info(handle: WorkspaceHandle, path: str) -> PathInfo:
     resolved = resolve_path(handle.root, path, must_exist=True, state_dir=handle.state_dir)
     target = resolved.absolute
     link_path = resolved.link_path
-    info = link_path.lstat()
+    try:
+        info = link_path.lstat()
+    except OSError as exc:
+        raise storage_failure("inspect", resolved.relative, exc) from exc
 
     if resolved.is_symlink:
         kind: EntryKind = "symlink"
@@ -304,8 +317,11 @@ def get_file_info(handle: WorkspaceHandle, path: str) -> PathInfo:
     if kind != "file":
         return base
 
-    with target.open("rb") as file_handle:
-        sample = file_handle.read(BINARY_SAMPLE_SIZE)
+    try:
+        with target.open("rb") as file_handle:
+            sample = file_handle.read(BINARY_SAMPLE_SIZE)
+    except OSError as exc:
+        raise storage_failure("read", resolved.relative, exc) from exc
 
     is_text = not looks_binary(sample)
     encoding: str | None = None
@@ -333,7 +349,7 @@ def get_file_info(handle: WorkspaceHandle, path: str) -> PathInfo:
         is_symlink=base.is_symlink,
         symlink_target=base.symlink_target,
         is_text=is_text,
-        content_hash=hash_file(target),
+        content_hash=hash_file(target, display_path=resolved.relative),
         line_count=line_count,
         encoding=encoding,
         newline=newline,
@@ -344,7 +360,7 @@ def get_file_hash(handle: WorkspaceHandle, path: str) -> str:
     resolved = resolve_path(
         handle.root, path, must_exist=True, expect="file", state_dir=handle.state_dir
     )
-    return hash_file(resolved.absolute)
+    return hash_file(resolved.absolute, display_path=resolved.relative)
 
 
 def file_exists(handle: WorkspaceHandle, path: str) -> ExistsResult:

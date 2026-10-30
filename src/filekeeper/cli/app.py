@@ -537,7 +537,14 @@ def _handle_read_many(context: _Context) -> int:
         {"ok": all(entry.ok for entry in entries), "files": output.jsonable(entries)},
         output.read_many(entries),
     )
-    return exit_codes.SUCCESS if all(entry.ok for entry in entries) else exit_codes.PATH_NOT_FOUND
+    failure = next((entry for entry in entries if not entry.ok), None)
+    if failure is None:
+        return exit_codes.SUCCESS
+    # A per-file failure is data, but the process exit code still tells the truth
+    # about the first failure's kind (e.g. an unreadable file is a storage error).
+    if failure.error is None:  # pragma: no cover - every failure carries a detail
+        return exit_codes.GENERAL_ERROR
+    return exit_codes.exit_code_for_code(failure.error.code)
 
 
 def _handle_info(context: _Context) -> int:

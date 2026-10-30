@@ -98,7 +98,7 @@ def test_verification_failure_is_reported(tmp_path: Path, monkeypatch: pytest.Mo
     target = tmp_path / "verify.txt"
     monkeypatch.setattr(
         "filekeeper.core.safety.atomic.hash_file",
-        lambda path: "sha256:" + "0" * 64,
+        lambda path, *, display_path=None: "sha256:" + "0" * 64,
     )
 
     with pytest.raises(StorageError):

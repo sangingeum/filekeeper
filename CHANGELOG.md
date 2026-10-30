@@ -118,6 +118,16 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- A read of an unreadable target is now `STORAGE_ERROR` (exit 9) instead of
+  `INTERNAL_ERROR` (exit 1), and its message names the caller's workspace-relative
+  path only. The same handling covers file reads, multi-file reads, file info,
+  hashing, directory listing and content search, matching the write path's
+  existing mapping. A genuine internal fault still returns `INTERNAL_ERROR`.
+- `keeper file read-many` now exits with the first failed entry's mapped exit code
+  (for example 9 for an unreadable file) instead of always exiting 3.
+- A content search whose requested root cannot be listed reports `STORAGE_ERROR`
+  rather than returning an empty, misleadingly successful result. Unreadable
+  nested entries are still skipped.
 - Boundary refusals now carry distinct, stable error codes and exit codes:
   `..` traversal keeps `PATH_OUTSIDE_WORKSPACE` (4), an absolute path outside
   the workspace is `ABSOLUTE_PATH_OUTSIDE_WORKSPACE` (6), and a symlink whose

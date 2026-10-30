@@ -402,3 +402,23 @@ re-read" state; `details.recovery` is the whole contract.
 `max_history_blob_bytes` path. An undo names hashes whose blobs the original
 operation already stored, so its record now reports an empty `history_skipped`;
 the flag is set only when the blob is genuinely absent from the store.
+
+## A permission failure on a read is a storage error, reported with the caller's path
+
+The write path already mapped `EACCES`/`EPERM` to `STORAGE_ERROR` (exit 9) and
+named only the caller's workspace-relative path. The read path let the operating
+system's `OSError` escape to the CLI's last-resort handler, which reported
+`INTERNAL_ERROR` (exit 1) and quoted the resolved host path inside the operating
+system's message. Two things were wrong at once: the code said "bug" for an
+environment condition, and the message disclosed the tree the tool is confined to.
+
+Read syscalls now raise `StorageError` through one helper that keeps only the
+standard reason phrase (`Permission denied`) and the workspace-relative path.
+`INTERNAL_ERROR` therefore still means what it says: an unexpected fault that the
+read path did not classify.
+
+`keeper file read-many` reports per-file failures as data, so it has no single
+error object. Its process exit code is taken from the first failed entry's code
+instead of always being 3. That keeps the documented meaning of each exit code on
+the command that produced it, and a mixed batch still exits non-zero. No exit-code
+number or mapping changed, and no new error code was added.

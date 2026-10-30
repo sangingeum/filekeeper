@@ -114,7 +114,7 @@ def atomic_write_bytes(
         _fsync_directory(parent)
 
     expected = hash_bytes(data)
-    actual = hash_file(destination)
+    actual = hash_file(destination, display_path=display_path or destination.name)
     if expected != actual:
         raise StorageError(
             "content verification failed after atomic write",

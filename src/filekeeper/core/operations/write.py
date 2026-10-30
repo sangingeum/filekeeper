@@ -32,6 +32,7 @@ from ..errors import (
     StorageError,
     SymlinkWriteRefusedError,
     ValidationError,
+    storage_failure,
 )
 from ..history.journal import OperationJournal, PendingItem
 from ..models import MutationResult, OperationItemResult
@@ -55,7 +56,9 @@ def _default_file_mode() -> int:
     return 0o666 & ~current
 
 
-def _snapshot(path: Path, cap: int) -> tuple[str | None, bytes | None, bool]:
+def _snapshot(
+    path: Path, cap: int, *, display_path: str
+) -> tuple[str | None, bytes | None, bool]:
     """Return ``(hash, bytes, exists)`` for a file, without reading oversize content.
 
     ``bytes`` is ``None`` for an oversize file: the hash is still recorded, the
@@ -67,8 +70,11 @@ def _snapshot(path: Path, cap: int) -> tuple[str | None, bytes | None, bool]:
     except FileNotFoundError:
         return None, None, False
     if info.st_size > cap:
-        return hash_file(path), None, True
-    data = path.read_bytes()
+        return hash_file(path, display_path=display_path), None, True
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        raise storage_failure("read", display_path, exc) from exc
     return hash_bytes(data), data, True
 
 
@@ -245,7 +251,9 @@ def create_file(
     ensure_parent_directory(resolved)
 
     before_hash, before_bytes, before_exists = _snapshot(
-        resolved.absolute, handle.config.max_history_blob_bytes
+        resolved.absolute,
+        handle.config.max_history_blob_bytes,
+        display_path=resolved.relative,
     )
     before_mode = _target_mode(resolved) if before_exists else None
     data = encode_text(content, encoding=encoding, has_bom=False)
@@ -298,7 +306,9 @@ def write_file(
     ensure_parent_directory(resolved)
 
     before_hash, before_bytes, before_exists = _snapshot(
-        resolved.absolute, handle.config.max_history_blob_bytes
+        resolved.absolute,
+        handle.config.max_history_blob_bytes,
+        display_path=resolved.relative,
     )
     before_mode = _target_mode(resolved) if before_exists else None
     if expected_hash is not None:
@@ -385,7 +395,9 @@ def copy_file(
                 "destination is a directory", details={"path": destination_resolved.relative}
             )
         destination_before, destination_bytes, destination_exists = _snapshot(
-            destination_resolved.absolute, handle.config.max_history_blob_bytes
+            destination_resolved.absolute,
+            handle.config.max_history_blob_bytes,
+            display_path=destination_resolved.relative,
         )
         if expected_destination_hash is None:
             raise AlreadyExistsError(
@@ -526,7 +538,9 @@ def move_file(
     )
     ensure_parent_directory(destination_resolved)
     destination_before, destination_bytes, destination_exists = _snapshot(
-        destination_resolved.absolute, cap
+        destination_resolved.absolute,
+        cap,
+        display_path=destination_resolved.relative,
     )
 
     operation_id: str | None = None
@@ -658,7 +672,9 @@ def delete_file(
             details={"path": resolved.relative},
         )
     before_hash, before_bytes, _ = _snapshot(
-        resolved.absolute, handle.config.max_history_blob_bytes
+        resolved.absolute,
+        handle.config.max_history_blob_bytes,
+        display_path=resolved.relative,
     )
     if expected_hash is not None:
         wanted = normalize_hash(expected_hash)

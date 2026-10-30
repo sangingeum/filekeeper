@@ -76,3 +76,9 @@ EXIT_CODE_DOCUMENTATION: tuple[tuple[int, str], ...] = (
 
 def exit_code_for(error: FilekeeperError) -> int:
     return _BY_CODE.get(str(error.code), GENERAL_ERROR)
+
+
+def exit_code_for_code(code: str) -> int:
+    """Map a bare error-code string, for results that report failures as data."""
+
+    return _BY_CODE.get(code, GENERAL_ERROR)

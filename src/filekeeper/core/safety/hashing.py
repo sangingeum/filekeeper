@@ -11,7 +11,7 @@ import hashlib
 import hmac
 from pathlib import Path
 
-from ..errors import PathNotFoundError, ValidationError
+from ..errors import PathNotFoundError, ValidationError, storage_failure
 
 ALGORITHM = "sha256"
 PREFIX = f"{ALGORITHM}:"
@@ -29,20 +29,24 @@ def hash_bytes(data: bytes) -> str:
     return format_digest(hashlib.sha256(data).hexdigest())
 
 
-def hash_file(path: Path) -> str:
-    """Stream a file through SHA-256; never loads the whole file into memory."""
+def hash_file(path: Path, *, display_path: str | None = None) -> str:
+    """Stream a file through SHA-256; never loads the whole file into memory.
 
+    ``display_path`` is the caller-facing path used in error details. Callers that
+    hold a resolved path should pass the workspace-relative form, so a failure
+    never reports the host path.
+    """
+
+    display = str(path) if display_path is None else display_path
     digest = hashlib.sha256()
     try:
         with path.open("rb") as handle:
             while chunk := handle.read(CHUNK_SIZE):
                 digest.update(chunk)
     except FileNotFoundError as exc:
-        raise PathNotFoundError("file not found", details={"path": str(path)}) from exc
+        raise PathNotFoundError("file not found", details={"path": display}) from exc
     except OSError as exc:
-        raise PathNotFoundError(
-            f"cannot read file for hashing: {exc}", details={"path": str(path)}
-        ) from exc
+        raise storage_failure("hash", display, exc) from exc
     return format_digest(digest.hexdigest())
 
 

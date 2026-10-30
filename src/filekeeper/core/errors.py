@@ -253,3 +253,15 @@ class NotImplementedYetError(FilekeeperError, NotImplementedError):
     """
 
     code = ErrorCode.NOT_IMPLEMENTED_YET
+
+
+def storage_failure(action: str, path: str, exc: OSError) -> StorageError:
+    """Build the :class:`StorageError` for a failed filesystem call on ``path``.
+
+    ``path`` is the caller-facing, workspace-relative path. An ``OSError``'s own
+    message embeds the resolved host path, so only its standard reason phrase is
+    carried into the message; the host path never leaves Core.
+    """
+
+    reason = exc.strerror or type(exc).__name__
+    return StorageError(f"cannot {action} {path}: {reason}", details={"path": path})

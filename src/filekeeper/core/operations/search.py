@@ -13,7 +13,7 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 
-from ..errors import FilekeeperError, InvalidPatternError, ValidationError
+from ..errors import FilekeeperError, InvalidPatternError, ValidationError, storage_failure
 from ..models import ContentMatch, ContentSearchResult, PathSearchResult
 from ..paths import resolve_path
 from ..safety.textdata import decode_bytes, looks_binary
@@ -32,7 +32,13 @@ def _walk_files(handle: WorkspaceHandle, base: Path) -> Iterator[Path]:
         directory, depth = stack.pop()
         try:
             children = sorted(directory.iterdir(), key=lambda item: item.name)
-        except OSError:
+        except OSError as exc:
+            if directory == base:
+                # The requested root is unreadable: an empty result would be a
+                # silent lie, so the failure is reported instead of skipped.
+                raise storage_failure(
+                    "list directory", _relative(handle, base) or ".", exc
+                ) from exc
             continue
         subdirectories: list[Path] = []
         for child in children:
@@ -143,8 +149,10 @@ def search_content(
         try:
             with candidate.open("rb") as file_handle:
                 raw = file_handle.read()
-        except OSError:  # pragma: no cover - permission races
-            continue
+        except OSError as exc:
+            if candidate == resolved.absolute:
+                raise storage_failure("read", relative or ".", exc) from exc
+            continue  # nested entries that cannot be read are skipped
         if looks_binary(raw[:_BINARY_SAMPLE_SIZE]):
             continue
         try:

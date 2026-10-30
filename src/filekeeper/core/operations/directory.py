@@ -15,6 +15,7 @@ from pathlib import Path
 
 from ..errors import (
     AlreadyExistsError,
+    FilekeeperError,
     PathNotFoundError,
     StorageError,
     ValidationError,
@@ -50,15 +51,17 @@ def _walk_tree(root: Path) -> list[Path]:
     return found
 
 
-def _file_bytes(path: Path, cap: int) -> tuple[str | None, bytes | None]:
+def _file_bytes(
+    path: Path, cap: int, *, display_path: str
+) -> tuple[str | None, bytes | None]:
     try:
         size = path.stat().st_size
     except OSError:
         return None, None
     if size > cap:
         try:
-            return hash_file(path), None
-        except OSError:
+            return hash_file(path, display_path=display_path), None
+        except (OSError, FilekeeperError):
             return None, None
     try:
         data = path.read_bytes()
@@ -250,7 +253,7 @@ def move_directory(
                     )
                 )
             else:
-                digest, data = _file_bytes(entry, cap)
+                digest, data = _file_bytes(entry, cap, display_path=relative)
                 if data is None:
                     skipped.append(relative)
                 items.append(
@@ -398,7 +401,7 @@ def delete_directory(
                     )
                 )
             else:
-                digest, data = _file_bytes(entry, cap)
+                digest, data = _file_bytes(entry, cap, display_path=relative)
                 items.append(
                     PendingItem(
                         relative_path=relative,
