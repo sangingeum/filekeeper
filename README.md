@@ -98,8 +98,9 @@ annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`,
 Requests that could exhaust memory are refused with `LIMIT_EXCEEDED`, not
 truncated: 32 paths per `file_read_many`, a 1 MiB patch, and at most 200 search
 results, 1000 directory entries or 200 history entries per request. Errors are
-structured data carrying the stable Core code, `retryable`, the caller's path and
-the workspace name, with no stack trace and no host path.
+structured data in the same envelope the CLI uses: `ok` plus `error`, carrying the
+stable Core code, `retryable`, and `details` (including the caller's own path),
+with no stack trace and no host path.
 
 A tool that mutates returns the Core `operation_id` and `undo_available` exactly
 as the CLI does, so `history_list`, `history_diff` and `undo_operation` work the
@@ -320,11 +321,26 @@ Failure carries a structured error and no traceback:
   "error": {
     "code": "CONTENT_CONFLICT",
     "message": "file content changed since it was read; refusing to overwrite",
-    "retryable": true,
-    "details": {"path": "todo.md"}
+    "retryable": false,
+    "details": {
+      "path": "todo.md",
+      "expected_hash": "sha256:...",
+      "actual_hash": "sha256:...",
+      "recovery": "re-read the target, then retry against its current hash"
+    }
   }
 }
 ```
+
+**Response shape.** Every document — success or failure, CLI or MCP — is one
+object whose first field is `ok`. A success document is flat: the Core result
+fields sit directly beside `ok`. A failure document has exactly two top-level
+fields, `ok` and `error`, and `error` has exactly `code`, `message`, `retryable`
+and `details`; nothing is duplicated at the top level. The caller's own path is
+in `error.details.path`, and `details.recovery` states how to proceed where a
+retry is meaningful. `retryable` describes the *identical* request: a stale hash
+is `false`, because the same call will fail the same way until the caller
+re-reads the file and writes against its new hash.
 
 `operation_id` is `null` only for a dry run (nothing was recorded).
 `undo_available` is `false` when an affected file was above the history size cap,
@@ -342,9 +358,9 @@ A failure that was rolled back reports the restored paths in the error details.
 | 0 | success |
 | 1 | unexpected error |
 | 2 | invalid arguments or validation error |
-| 3 | path or workspace not found |
+| 3 | path, workspace or recorded operation not found |
 | 4 | permission or workspace-boundary violation |
-| 5 | concurrency conflict (stale expected hash) |
+| 5 | concurrency conflict: stale expected hash, no matching text, or a match count other than the expected one |
 | 6 | absolute path resolves outside the workspace |
 | 7 | patch could not be applied; the pre-patch state is intact |
 | 8 | a failed patch could not be fully rolled back |

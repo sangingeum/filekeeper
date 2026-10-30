@@ -363,3 +363,42 @@ is confined to.
 not set them, so a caller cannot claim an identity it was not given; the fields
 stay generic audit metadata. The `history_list` filters named `actor` and
 `task_id` are queries over what was recorded, not authority to record anything.
+
+## Every operation is identified by `operation_id`
+
+History items were keyed `id` while mutations, diff, undo and the MCP tools used
+`operation_id`. One concept with two access patterns forces every client to know
+which surface produced a document. History records now expose `operation_id`
+everywhere — `history list` items, `history show`, `history diff`, the undo
+argument and every mutation result. The database column stays `id`; the mapping
+happens once, when a row becomes an `OperationRecord`.
+
+`id` is not kept as a deprecated alias. A second key would be the same defect
+with a longer name, and the field is new enough that no published client can
+depend on it.
+
+## One error envelope for the CLI and the MCP server
+
+Errors used to differ by adapter: the CLI emitted `{"ok": false, "error": {...}}`
+while the MCP server nested the code the same way but also duplicated `path` and
+`workspace` at the top level. Successes were flat, so a client needed one shape
+for success and two for failure.
+
+The canonical envelope is now the CLI's: a success document is flat with `ok`
+first; a failure document has exactly `ok` and `error`, and `error` carries
+`code`, `message`, `retryable` and, when present, `details`. The caller's own path
+lives in `error.details.path`, which Core already populates for most errors; the
+adapter fills it in when Core recorded only a hash. Nothing is duplicated at the
+top level. Exit-code mapping is unchanged.
+
+`ContentConflictError` reports `retryable: false`. The identical request cannot
+succeed, so the payload names the real recovery instead: re-read the target, then
+write against the hash that read returned. There is no separate "retryable after
+re-read" state; `details.recovery` is the whole contract.
+
+## An undo record reports only history that really was skipped
+
+`history_skipped` means the bytes needed to undo were not stored — the
+`max_history_blob_bytes` path. An undo names hashes whose blobs the original
+operation already stored, so its record now reports an empty `history_skipped`;
+the flag is set only when the blob is genuinely absent from the store.

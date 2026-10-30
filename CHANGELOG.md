@@ -100,6 +100,22 @@ All notable changes to this project are recorded here. The format follows
   declares nor can import the MCP SDK, while installing `filekeeper-mcp` brings
   Core, the SDK and both console scripts.
 
+### Changed
+
+- Operation identity is `operation_id` on every surface. `history list` and
+  `history show` items use the same key as mutations, diff and undo; there is no
+  legacy `id` alias.
+- One error envelope for the CLI and the MCP server: a failure document has
+  exactly `ok` and `error`, `error.details.path` carries the caller's path, and
+  no field is duplicated at the top level.
+- `CONTENT_CONFLICT` reports `retryable: false` and states the recovery path in
+  `error.details.recovery`: re-read the target, then write against its current
+  hash.
+- `history_skipped` is reported only when the bytes were genuinely not stored.
+  An undo record no longer claims skipped history.
+- The README exit-code row for code 5 now names all three conflict shapes: stale
+  expected hash, no matching text, and a match count other than the expected one.
+
 ### Fixed
 
 - Boundary refusals now carry distinct, stable error codes and exit codes:

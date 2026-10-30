@@ -118,17 +118,23 @@ Failures are structured data, never a stack trace:
   "error": {
     "code": "CONTENT_CONFLICT",
     "message": "file content changed since it was read; refusing to overwrite",
-    "retryable": true,
-    "details": {"path": "notes.txt"}
-  },
-  "path": "notes.txt",
-  "workspace": "project"
+    "retryable": false,
+    "details": {
+      "path": "notes.txt",
+      "expected_hash": "sha256:...",
+      "actual_hash": "sha256:...",
+      "recovery": "re-read the target, then retry against its current hash"
+    }
+  }
 }
 ```
 
-The code is the stable Core code (see the main README). The caller's path and the
-workspace name are preserved; server-side host paths are not. `retryable` says
-whether the same request may succeed after the caller re-reads the state.
+The envelope is the same one the CLI emits: a failure document has exactly `ok`
+and `error` at the top level, and `error` has exactly `code`, `message`,
+`retryable` and `details`. The caller's own path is in `error.details.path`;
+server-side host paths are not preserved. `retryable` describes the identical
+request, so a stale hash is `false`: the caller must re-read the target and write
+against its current hash.
 
 ## Not in this release
 
