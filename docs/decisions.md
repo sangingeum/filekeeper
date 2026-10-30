@@ -163,3 +163,15 @@ update is reported in the result's warnings rather than failing the operation.
 `max_bytes` on a read narrows the limit but cannot exceed `max_read_bytes` from
 `config.toml`. A caller cannot talk the tool into loading an unbounded file. The
 same pattern applies to search results, directory entries and recursion depth.
+
+## Boundary refusals keep distinct error codes and exit codes
+
+A single `PATH_OUTSIDE_WORKSPACE` code conflated three different mistakes, so a
+caller had to parse prose to tell them apart. The split is now part of the
+contract: `..` traversal keeps `PATH_OUTSIDE_WORKSPACE` and exit code 4; an
+absolute path that resolves outside the workspace is
+`ABSOLUTE_PATH_OUTSIDE_WORKSPACE` (exit 6); a symlink whose target resolves
+outside is `SYMLINK_ESCAPE_REFUSED` (exit 11). `SYMLINK_WRITE_REFUSED` stays
+separate, because writing to a link is a different act from following one out of
+the workspace. Every case is still a refusal: no input that was rejected before
+is accepted now.

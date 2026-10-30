@@ -8,10 +8,13 @@ from pathlib import Path
 import pytest
 
 from filekeeper.core.errors import (
+    AbsolutePathOutsideWorkspaceError,
+    ErrorCode,
     PathNotFoundError,
     PathOutsideWorkspaceError,
     SpecialFileRefusedError,
     StatePathError,
+    SymlinkEscapeRefusedError,
     SymlinkWriteRefusedError,
     ValidationError,
 )
@@ -30,13 +33,15 @@ def test_absolute_path_inside_is_accepted(workspace_root: Path) -> None:
 
 
 def test_absolute_path_outside_is_rejected(workspace_root: Path, tmp_path: Path) -> None:
-    with pytest.raises(PathOutsideWorkspaceError):
+    with pytest.raises(AbsolutePathOutsideWorkspaceError) as raised:
         resolve_path(workspace_root, tmp_path / "elsewhere.txt", must_exist=True)
+    assert raised.value.code is ErrorCode.ABSOLUTE_PATH_OUTSIDE_WORKSPACE
 
 
 def test_parent_traversal_is_rejected(workspace_root: Path) -> None:
-    with pytest.raises(PathOutsideWorkspaceError):
+    with pytest.raises(PathOutsideWorkspaceError) as raised:
         resolve_path(workspace_root, "../escape.txt")
+    assert raised.value.code is ErrorCode.PATH_OUTSIDE_WORKSPACE
 
 
 def test_embedded_traversal_is_rejected_even_when_it_stays_inside(
@@ -47,8 +52,9 @@ def test_embedded_traversal_is_rejected_even_when_it_stays_inside(
 
 
 def test_absolute_traversal_that_escapes_is_rejected(workspace_root: Path) -> None:
-    with pytest.raises(PathOutsideWorkspaceError):
+    with pytest.raises(AbsolutePathOutsideWorkspaceError) as raised:
         resolve_path(workspace_root, str(workspace_root / ".." / "outside.txt"))
+    assert raised.value.code is ErrorCode.ABSOLUTE_PATH_OUTSIDE_WORKSPACE
 
 
 def test_symlink_pointing_outside_is_rejected(workspace_root: Path, tmp_path: Path) -> None:
@@ -57,10 +63,13 @@ def test_symlink_pointing_outside_is_rejected(workspace_root: Path, tmp_path: Pa
     link = workspace_root / "link.txt"
     os.symlink(outside, link)
 
-    with pytest.raises(PathOutsideWorkspaceError):
+    with pytest.raises(SymlinkEscapeRefusedError) as raised:
         resolve_path(workspace_root, "link.txt", must_exist=True)
-    with pytest.raises(PathOutsideWorkspaceError):
+    assert raised.value.code is ErrorCode.SYMLINK_ESCAPE_REFUSED
+
+    with pytest.raises(SymlinkEscapeRefusedError) as write_raised:
         resolve_path(workspace_root, "link.txt", for_write=True)
+    assert write_raised.value.code is ErrorCode.SYMLINK_ESCAPE_REFUSED
 
 
 def test_symlink_pointing_inside_can_be_read_but_not_written(workspace_root: Path) -> None:

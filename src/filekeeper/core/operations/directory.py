@@ -189,13 +189,14 @@ def delete_directory(
     entries = _count_entries(target)
     if entries > 0 and not recursive:
         raise ValidationError(
-            "directory is not empty; pass recursive=True to delete its contents",
+            "directory is not empty; pass --recursive --confirm-recursive "
+            "to delete its contents",
             details={"path": resolved.relative, "entries": entries},
         )
     if entries > 0 and not confirm_recursive:
         raise ValidationError(
-            "recursive deletion requires explicit confirmation (confirm_recursive=True); "
-            "this release cannot undo a deleted tree",
+            "recursive deletion requires explicit confirmation "
+            "(--recursive --confirm-recursive); this release cannot undo a deleted tree",
             details={"path": resolved.relative, "entries": entries},
         )
 
@@ -226,8 +227,8 @@ def delete_directory(
         affected_count=entries,
         warnings=(
             "A directory tree is deleted as a sequence of filesystem calls: the "
-            "operation is recoverable only once history lands, and is never atomic "
-            "across the tree.",
+            "deletion cannot be undone in this release, and is never atomic across "
+            "the tree.",
         )
         if entries > 0
         else (),

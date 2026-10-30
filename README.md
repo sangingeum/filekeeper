@@ -179,10 +179,12 @@ disk, but it is not yet undoable.
 | 3 | path or workspace not found |
 | 4 | permission or workspace-boundary violation |
 | 5 | concurrency conflict (stale expected hash) |
+| 6 | absolute path resolves outside the workspace |
 | 7 | patch could not be applied (reserved) |
 | 8 | partial rollback or recovery (reserved) |
 | 9 | storage or database error |
 | 10 | write refused: the target looks like credential material |
+| 11 | symlink target resolves outside the workspace |
 
 `keeper file exists` exits 3 when the path does not exist, which makes it usable as
 a shell predicate.
@@ -190,7 +192,8 @@ a shell predicate.
 ## Error codes
 
 `INVALID_ARGUMENT`, `PATH_NOT_FOUND`, `NOT_A_FILE`, `NOT_A_DIRECTORY`,
-`PATH_OUTSIDE_WORKSPACE`, `PATH_IS_STATE_PATH`, `SYMLINK_WRITE_REFUSED`,
+`PATH_OUTSIDE_WORKSPACE`, `ABSOLUTE_PATH_OUTSIDE_WORKSPACE`,
+`SYMLINK_ESCAPE_REFUSED`, `PATH_IS_STATE_PATH`, `SYMLINK_WRITE_REFUSED`,
 `SPECIAL_FILE_REFUSED`, `SENSITIVE_PATH_REFUSED`, `ALREADY_EXISTS`,
 `CONTENT_CONFLICT`, `BINARY_CONTENT_REFUSED`, `LIMIT_EXCEEDED`,
 `INVALID_PATTERN`, `WORKSPACE_NOT_FOUND`, `WORKSPACE_EXISTS`,
@@ -203,9 +206,12 @@ Codes are stable; messages are not a contract.
 
 - **Confinement.** Relative paths resolve inside the workspace root. Absolute paths
   are accepted only when they land inside it after canonical resolution. Paths
-  containing `..` are rejected. A symlink whose target leaves the workspace is
-  refused, and a symlink is never a write target (the link itself would be
-  replaced, not its target). Device files, sockets and FIFOs are refused.
+  containing `..` are rejected with `PATH_OUTSIDE_WORKSPACE` (exit 4). An
+  absolute path that resolves outside is refused with
+  `ABSOLUTE_PATH_OUTSIDE_WORKSPACE` (exit 6), and a symlink whose target leaves
+  the workspace with `SYMLINK_ESCAPE_REFUSED` (exit 11). A symlink is never a
+  write target (the link itself would be replaced, not its target). Device
+  files, sockets and FIFOs are refused.
 - **Credential-shaped targets are refused.** Writes to `.env`, `.env.*`, `*.pem`,
   `*.key`, `id_rsa` and its siblings, `*.p12`, `*.pfx`, `authorized_keys`,
   `.netrc`, and anything under `.ssh/`, `.gnupg/` or `.aws/` fail with

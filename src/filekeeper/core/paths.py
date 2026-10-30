@@ -5,12 +5,16 @@ Every operation goes through :func:`resolve_path`. It is the single place where
 
 1. Relative paths resolve against the workspace root; absolute paths are accepted
    only when they land inside the workspace after canonical resolution.
-2. Relative paths containing a ``..`` segment are rejected outright. They are
-   never needed for legitimate workspace work, and rejecting them is cheaper to
-   audit than proving each normalisation correct.
-3. Symlinks are resolved. A link whose target leaves the workspace is refused,
-   and a symlink is never a write target: the link itself would be replaced.
-4. Device files, sockets and FIFOs are refused for normal file operations, as are
+2. Relative paths containing a ``..`` segment are rejected outright with
+   :class:`PathOutsideWorkspaceError`. They are never needed for legitimate
+   workspace work, and rejecting them is cheaper to audit than proving each
+   normalisation correct.
+3. Symlinks are resolved. A link whose target leaves the workspace is refused
+   with :class:`SymlinkEscapeRefusedError`, and a symlink is never a write
+   target: the link itself would be replaced.
+4. An absolute path that resolves outside the workspace is refused with
+   :class:`AbsolutePathOutsideWorkspaceError`.
+5. Device files, sockets and FIFOs are refused for normal file operations, as are
    paths inside Filekeeper's own state directory.
 
 Errors name the caller's path, never the resolved host path, so adapter output
@@ -26,16 +30,18 @@ from pathlib import Path
 from typing import Literal
 
 from .errors import (
-    NotADirectoryError as FilekeeperNotADirectoryError,
-)
-from .errors import (
+    AbsolutePathOutsideWorkspaceError,
     NotAFileError,
     PathNotFoundError,
     PathOutsideWorkspaceError,
     SpecialFileRefusedError,
     StatePathError,
+    SymlinkEscapeRefusedError,
     SymlinkWriteRefusedError,
     ValidationError,
+)
+from .errors import (
+    NotADirectoryError as FilekeeperNotADirectoryError,
 )
 
 PathKind = Literal["file", "directory", "symlink", "other"]
@@ -86,6 +92,24 @@ def _kind_of(path: Path) -> PathKind:
     if path.is_file():
         return "file"
     return "other"
+
+
+def _escapes_through_symlink(joined: Path, root_canonical: Path) -> bool:
+    """True when a symlink at or below the workspace root points outside it."""
+
+    try:
+        relative = Path(os.path.abspath(joined)).relative_to(root_canonical)
+    except ValueError:
+        return False
+    current = root_canonical
+    for part in relative.parts:
+        current = current / part
+        if not current.is_symlink():
+            continue
+        target = Path(os.path.realpath(current))
+        if target != root_canonical and root_canonical not in target.parents:
+            return True
+    return False
 
 
 def _reject_special_file(path: Path, *, display: str) -> None:
@@ -139,6 +163,16 @@ def resolve_path(
     canonical = Path(os.path.realpath(joined))
 
     if canonical != root_canonical and root_canonical not in canonical.parents:
+        if _escapes_through_symlink(joined, root_canonical):
+            raise SymlinkEscapeRefusedError(
+                "symlink target resolves outside the workspace",
+                details={"path": raw},
+            )
+        if candidate.is_absolute():
+            raise AbsolutePathOutsideWorkspaceError(
+                "absolute path resolves outside the workspace",
+                details={"path": raw},
+            )
         raise PathOutsideWorkspaceError(
             "path resolves outside the workspace",
             details={"path": raw},

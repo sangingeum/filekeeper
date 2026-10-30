@@ -19,6 +19,8 @@ class ErrorCode(StrEnum):
     NOT_A_FILE = "NOT_A_FILE"
     NOT_A_DIRECTORY = "NOT_A_DIRECTORY"
     PATH_OUTSIDE_WORKSPACE = "PATH_OUTSIDE_WORKSPACE"
+    ABSOLUTE_PATH_OUTSIDE_WORKSPACE = "ABSOLUTE_PATH_OUTSIDE_WORKSPACE"
+    SYMLINK_ESCAPE_REFUSED = "SYMLINK_ESCAPE_REFUSED"
     PATH_IS_STATE_PATH = "PATH_IS_STATE_PATH"
     SYMLINK_WRITE_REFUSED = "SYMLINK_WRITE_REFUSED"
     SPECIAL_FILE_REFUSED = "SPECIAL_FILE_REFUSED"
@@ -90,9 +92,21 @@ class NotADirectoryError(FilekeeperError):
 
 
 class PathOutsideWorkspaceError(FilekeeperError):
-    """A path resolved outside the workspace boundary, or used ``..`` traversal."""
+    """A relative path used ``..`` traversal."""
 
     code = ErrorCode.PATH_OUTSIDE_WORKSPACE
+
+
+class AbsolutePathOutsideWorkspaceError(PathOutsideWorkspaceError):
+    """An absolute path resolved outside the selected workspace."""
+
+    code = ErrorCode.ABSOLUTE_PATH_OUTSIDE_WORKSPACE
+
+
+class SymlinkEscapeRefusedError(PathOutsideWorkspaceError):
+    """A symlink inside the workspace resolved to a target outside it."""
+
+    code = ErrorCode.SYMLINK_ESCAPE_REFUSED
 
 
 class StatePathError(FilekeeperError):

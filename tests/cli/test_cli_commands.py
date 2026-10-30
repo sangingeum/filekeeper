@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 from pathlib import Path
 
 from filekeeper.cli import exit_codes
@@ -201,3 +203,73 @@ def test_stdin_content_is_used_when_provided(run_cli, workspace_root: Path, monk
     code, _, _ = run_cli("file", "create", "piped.txt")
     assert code == exit_codes.SUCCESS
     assert (workspace_root / "piped.txt").read_text(encoding="utf-8") == "from stdin\n"
+
+
+def test_traversal_refusal_exits_four(run_cli, workspace_root: Path) -> None:
+    run_cli("workspace", "create", "project", str(workspace_root))
+    code, _, err = run_cli("file", "read", "../outside.txt")
+    assert code == exit_codes.ACCESS_DENIED
+    assert "PATH_OUTSIDE_WORKSPACE" in err
+
+
+def test_absolute_path_outside_exits_six(run_cli, workspace_root: Path, tmp_path: Path) -> None:
+    run_cli("workspace", "create", "project", str(workspace_root))
+    outside = tmp_path / "elsewhere.txt"
+    outside.write_text("secret\n", encoding="utf-8")
+
+    code, _, err = run_cli("file", "read", str(outside))
+    assert code == exit_codes.ABSOLUTE_PATH_OUTSIDE_WORKSPACE
+    assert "ABSOLUTE_PATH_OUTSIDE_WORKSPACE" in err
+    assert "PATH_OUTSIDE_WORKSPACE" not in err.replace("ABSOLUTE_PATH_OUTSIDE_WORKSPACE", "")
+
+
+def test_symlink_escape_refusal_exits_eleven(
+    run_cli, workspace_root: Path, tmp_path: Path
+) -> None:
+    run_cli("workspace", "create", "project", str(workspace_root))
+    outside = tmp_path / "target.txt"
+    outside.write_text("secret\n", encoding="utf-8")
+    os.symlink(outside, workspace_root / "escape.txt")
+
+    code, _, err = run_cli("file", "read", "escape.txt")
+    assert code == exit_codes.SYMLINK_ESCAPE_REFUSED
+    assert "SYMLINK_ESCAPE_REFUSED" in err
+    assert outside.read_text(encoding="utf-8") == "secret\n"
+
+
+def test_read_only_directory_write_is_a_storage_error(run_cli, workspace_root: Path) -> None:
+    run_cli("workspace", "create", "project", str(workspace_root))
+    read_only = workspace_root / "locked"
+    read_only.mkdir()
+    os.chmod(read_only, 0o555)
+    try:
+        code, _, err = run_cli("file", "create", "locked/blocked.txt", "--content", "hello\n")
+    finally:
+        os.chmod(read_only, 0o755)
+
+    assert code == exit_codes.STORAGE_ERROR
+    assert "STORAGE_ERROR" in err
+    assert "Permission denied" in err
+    assert re.search(r"(?<![\w.-])/[^\s'\"]+", err) is None, err
+    assert ".keeper-tmp-" not in err
+    assert not (read_only / "blocked.txt").exists()
+
+
+def test_non_empty_directory_advice_names_the_cli_flags(run_cli, workspace_root: Path) -> None:
+    run_cli("workspace", "create", "project", str(workspace_root))
+
+    code, _, err = run_cli("dir", "delete", "sub")
+    assert code == exit_codes.INVALID_ARGUMENT
+    assert "--recursive --confirm-recursive" in err
+    assert "recursive=True" not in err
+
+
+def test_recursive_delete_warning_says_deletion_cannot_be_undone(
+    run_cli, workspace_root: Path
+) -> None:
+    run_cli("workspace", "create", "project", str(workspace_root))
+
+    code, out, _ = run_cli("dir", "delete", "sub", "--recursive", "--confirm-recursive")
+    assert code == exit_codes.SUCCESS
+    assert "cannot be undone in this release" in out
+    assert "recoverable only once history lands" not in out

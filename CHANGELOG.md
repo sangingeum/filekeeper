@@ -43,6 +43,20 @@ All notable changes to this project are recorded here. The format follows
 - Published stub module for exact-text and line-range editing that raises rather
   than silently doing nothing.
 
+### Fixed
+
+- Boundary refusals now carry distinct, stable error codes and exit codes:
+  `..` traversal keeps `PATH_OUTSIDE_WORKSPACE` (4), an absolute path outside
+  the workspace is `ABSOLUTE_PATH_OUTSIDE_WORKSPACE` (6), and a symlink whose
+  target escapes is `SYMLINK_ESCAPE_REFUSED` (11).
+- A write into an unwritable directory is now reported as `STORAGE_ERROR`
+  (exit 9) instead of `INTERNAL_ERROR` (exit 1); the message names only the
+  caller's path, never the resolved host path or the temporary name.
+- The non-empty-directory refusal now points at the real CLI flags
+  (`--recursive --confirm-recursive`) instead of the Core keyword.
+- The recursive-delete warning states plainly that the deletion cannot be
+  undone in this release.
+
 ### Notes
 
 - Operation history, undo, redo, snapshots, locks, patch application and the MCP

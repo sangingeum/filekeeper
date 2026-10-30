@@ -54,23 +54,28 @@ def atomic_write_bytes(
     *,
     mode: int | None = None,
     fsync: bool = True,
+    display_path: str | None = None,
 ) -> str:
     """Replace ``destination`` with ``data`` atomically; return the new content hash.
 
     ``mode`` sets the resulting permission bits. When omitted, an existing
     destination keeps its mode and a new file gets the umask-derived default.
-    The final content is read back and hashed; a mismatch is a storage error.
+    ``display_path`` is the caller-facing path used in error details; the
+    resolved host path and the temporary name are never reported. The final
+    content is read back and hashed; a mismatch is a storage error.
     """
+
+    details = {"path": display_path} if display_path is not None else {}
 
     if destination.is_symlink():
         raise StorageError(
             "refusing to replace a symlink atomically; the link itself would be "
             "replaced, not its target",
-            details={"path": str(destination)},
+            details=details,
         )
     parent = destination.parent
     if not parent.is_dir():
-        raise StorageError("destination directory does not exist", details={"path": str(parent)})
+        raise StorageError("destination directory does not exist", details=details)
 
     existing_mode: int | None = None
     try:
@@ -78,9 +83,10 @@ def atomic_write_bytes(
     except FileNotFoundError:
         existing_mode = None
 
-    descriptor, temporary_name = tempfile.mkstemp(prefix=_TEMP_PREFIX, dir=parent)
-    temporary_path = Path(temporary_name)
+    temporary_path: Path | None = None
     try:
+        descriptor, temporary_name = tempfile.mkstemp(prefix=_TEMP_PREFIX, dir=parent)
+        temporary_path = Path(temporary_name)
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(data)
             handle.flush()
@@ -93,12 +99,16 @@ def atomic_write_bytes(
         os.chmod(temporary_path, effective_mode)
         os.replace(temporary_path, destination)
     except OSError as exc:
+        # ``str(exc)`` carries the temporary path and errno context; only the
+        # standard reason phrase is safe to show a caller.
         raise StorageError(
-            f"atomic write failed: {exc}", details={"path": str(destination)}
+            f"atomic write failed: {exc.strerror or type(exc).__name__}",
+            details=details,
         ) from exc
     finally:
-        with contextlib.suppress(FileNotFoundError):
-            temporary_path.unlink()
+        if temporary_path is not None:
+            with contextlib.suppress(FileNotFoundError):
+                temporary_path.unlink()
 
     if fsync:
         _fsync_directory(parent)
@@ -108,7 +118,7 @@ def atomic_write_bytes(
     if expected != actual:
         raise StorageError(
             "content verification failed after atomic write",
-            details={"path": str(destination), "expected_hash": expected, "actual_hash": actual},
+            details={**details, "expected_hash": expected, "actual_hash": actual},
         )
     return actual
 

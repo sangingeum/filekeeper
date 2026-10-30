@@ -112,7 +112,11 @@ def _after_write(
     if not dry_run:
         mode = _target_mode(resolved)
         after_hash = atomic_write_bytes(
-            resolved.absolute, data, mode=mode, fsync=handle.config.fsync
+            resolved.absolute,
+            data,
+            mode=mode,
+            fsync=handle.config.fsync,
+            display_path=resolved.relative,
         )
     return MutationResult(
         workspace=handle.name,
