@@ -426,9 +426,7 @@ def copy_file(
     try:
         data = source_resolved.absolute.read_bytes()
     except OSError as exc:
-        raise StorageError(
-            f"cannot read source: {exc}", details={"path": source_resolved.relative}
-        ) from exc
+        raise storage_failure("read", source_resolved.relative, exc) from exc
     _check_size(handle, data, destination_resolved.relative)
 
     result = _after_write(
@@ -502,7 +500,7 @@ def move_file(
             "source is a directory; use the directory move operation",
             details={"path": source_resolved.relative},
         )
-    source_hash = hash_file(source_resolved.absolute)
+    source_hash = hash_file(source_resolved.absolute, display_path=source_resolved.relative)
     source_mode = _target_mode(source_resolved)
     cap = handle.config.max_history_blob_bytes
     source_bytes: bytes | None
@@ -513,9 +511,7 @@ def move_file(
             else None
         )
     except OSError as exc:
-        raise StorageError(
-            f"cannot read source: {exc}", details={"path": source_resolved.relative}
-        ) from exc
+        raise storage_failure("read", source_resolved.relative, exc) from exc
 
     destination_resolved = resolve_path(
         handle.root, destination, for_write=True, state_dir=handle.state_dir
@@ -601,7 +597,9 @@ def move_file(
             ) from exc
         fsync_directory(source_resolved.absolute.parent)
         fsync_directory(destination_resolved.absolute.parent)
-        after_hash = hash_file(destination_resolved.absolute)
+        after_hash = hash_file(
+            destination_resolved.absolute, display_path=destination_resolved.relative
+        )
         if after_hash != source_hash:
             if journal is not None and operation_id is not None:
                 journal.abort(operation_id)
@@ -719,7 +717,9 @@ def delete_file(
             if journal is not None and operation_id is not None:
                 journal.abort(operation_id)
             raise StorageError(
-                f"cannot delete file: {exc}", details={"path": resolved.relative}
+                f"cannot delete file {resolved.relative}: "
+                f"{exc.strerror or type(exc).__name__}",
+                details={"path": resolved.relative},
             ) from exc
         fsync_directory(resolved.absolute.parent)
         if journal is not None and operation_id is not None:

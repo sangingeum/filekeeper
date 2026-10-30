@@ -327,7 +327,7 @@ def _current_state(root: Path, item: sqlite3.Row | OperationItemRecord) -> tuple
     if not path.is_file():
         return False, None
     try:
-        return True, hash_file(path)
+        return True, hash_file(path, display_path=relative)
     except Exception:
         return False, None
 

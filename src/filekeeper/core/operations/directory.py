@@ -19,6 +19,7 @@ from ..errors import (
     PathNotFoundError,
     StorageError,
     ValidationError,
+    storage_failure,
 )
 from ..errors import (
     NotADirectoryError as FilekeeperNotADirectoryError,
@@ -143,9 +144,7 @@ def create_directory(
         except OSError as exc:
             if journal is not None and operation_id is not None:
                 journal.abort(operation_id)
-            raise StorageError(
-                f"cannot create directory: {exc}", details={"path": resolved.relative}
-            ) from exc
+            raise storage_failure("create directory", resolved.relative, exc) from exc
         fsync_directory(target.parent)
         if parents:
             fsync_directory(target)
@@ -444,10 +443,7 @@ def delete_directory(
         except OSError as exc:
             # Leave the operation pending: reconciliation inspects the actual
             # state and reports the partial application honestly.
-            raise StorageError(
-                f"cannot delete directory: {exc.strerror or type(exc).__name__}",
-                details={"path": resolved.relative},
-            ) from exc
+            raise storage_failure("delete directory", resolved.relative, exc) from exc
         fsync_directory(target.parent)
         if journal is not None and operation_id is not None:
             journal.commit(operation_id)

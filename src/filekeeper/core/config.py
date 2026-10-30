@@ -84,7 +84,9 @@ def load_config(home: Path) -> Config:
             raw = tomllib.load(handle)
     except (OSError, tomllib.TOMLDecodeError) as exc:
         raise StorageError(
-            f"cannot read configuration file: {exc}", details={"path": str(path)}
+            f"cannot read configuration file: "
+            f"{getattr(exc, 'strerror', None) or exc}",
+            details={"path": str(path)},
         ) from exc
 
     section = raw.get("filekeeper", raw)

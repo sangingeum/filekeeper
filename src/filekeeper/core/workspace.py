@@ -279,7 +279,8 @@ class WorkspaceRegistry:
             state_dir.chmod(stat.S_IRWXU)
         except OSError as exc:
             raise StorageError(
-                f"cannot create state directory: {exc}",
+                f"cannot create state directory: "
+                f"{exc.strerror or type(exc).__name__}",
                 details={"state_dir": str(state_dir)},
             ) from exc
         ensure_gitignore_entry(Path(workspace.root_path))

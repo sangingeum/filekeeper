@@ -22,6 +22,7 @@ from ..errors import (
     HistoryUnavailableError,
     StorageError,
     UndoConflictError,
+    storage_failure,
 )
 from ..models import MutationResult, OperationItemRecord, OperationItemResult, OperationRecord
 from ..safety.atomic import atomic_write_bytes, fsync_directory
@@ -53,7 +54,7 @@ def _current(item: OperationItemRecord, path: Path) -> tuple[bool, str | None]:
     if not path.is_file():
         return False, None
     try:
-        return True, hash_file(path)
+        return True, hash_file(path, display_path=item.relative_path)
     except OSError:
         return False, None
 
@@ -172,10 +173,7 @@ def _apply(journal: OperationJournal, steps: list[_Step]) -> None:
             if step.item.before_mode is not None:
                 os.chmod(path, stat.S_IMODE(step.item.before_mode))
         except OSError as exc:
-            raise StorageError(
-                f"cannot restore directory: {exc.strerror or type(exc).__name__}",
-                details={"path": step.item.relative_path},
-            ) from exc
+            raise storage_failure("restore directory", step.item.relative_path, exc) from exc
 
     for step in steps:
         if step.action != "restore-file":
@@ -190,10 +188,7 @@ def _apply(journal: OperationJournal, steps: list[_Step]) -> None:
                 display_path=step.item.relative_path,
             )
         except OSError as exc:
-            raise StorageError(
-                f"cannot restore file: {exc}",
-                details={"path": step.item.relative_path},
-            ) from exc
+            raise storage_failure("restore file", step.item.relative_path, exc) from exc
 
     removable = [step for step in steps if step.action in {"remove-file", "remove-directory"}]
     files = [step for step in removable if step.action == "remove-file"]
@@ -203,9 +198,8 @@ def _apply(journal: OperationJournal, steps: list[_Step]) -> None:
             path.unlink()
             fsync_directory(path.parent)
         except OSError as exc:
-            raise StorageError(
-                f"cannot remove file during undo: {exc.strerror or type(exc).__name__}",
-                details={"path": step.item.relative_path},
+            raise storage_failure(
+                "remove file during undo", step.item.relative_path, exc
             ) from exc
 
     directories = [step for step in removable if step.action == "remove-directory"]
@@ -217,9 +211,8 @@ def _apply(journal: OperationJournal, steps: list[_Step]) -> None:
             path.rmdir()
             fsync_directory(path.parent)
         except OSError as exc:
-            raise StorageError(
-                f"cannot remove directory during undo: {exc.strerror or type(exc).__name__}",
-                details={"path": step.item.relative_path},
+            raise storage_failure(
+                "remove directory during undo", step.item.relative_path, exc
             ) from exc
 
 

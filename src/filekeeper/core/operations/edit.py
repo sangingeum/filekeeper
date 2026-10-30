@@ -39,8 +39,8 @@ from ..errors import (
     NoMatchError,
     PartialRecoveryError,
     PatchFailedError,
-    StorageError,
     ValidationError,
+    storage_failure,
 )
 from ..history.journal import OperationJournal, PendingItem
 from ..models import (
@@ -110,9 +110,7 @@ def _load(
     try:
         raw = resolved.absolute.read_bytes()
     except OSError as exc:
-        raise StorageError(
-            f"cannot read file for editing: {exc}", details={"path": resolved.relative}
-        ) from exc
+        raise storage_failure("read", resolved.relative, exc) from exc
     text, profile = decode_bytes(raw, path=resolved.relative)
     mode = _target_mode(resolved)
     return _Loaded(
@@ -926,10 +924,7 @@ def _plan_file(
         try:
             before_bytes = resolved.absolute.read_bytes()
         except OSError as exc:
-            raise StorageError(
-                f"cannot read file for patching: {exc}",
-                details={"path": resolved.relative},
-            ) from exc
+            raise storage_failure("read", resolved.relative, exc) from exc
         before_text, profile = decode_bytes(before_bytes, path=resolved.relative)
         before_hash = hash_bytes(before_bytes)
         before_mode = _target_mode(resolved)

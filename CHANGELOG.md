@@ -115,6 +115,11 @@ All notable changes to this project are recorded here. The format follows
   An undo record no longer claims skipped history.
 - The README exit-code row for code 5 now names all three conflict shapes: stale
   expected hash, no matching text, and a match count other than the expected one.
+- `keeper file search` on an unreadable root now reports `STORAGE_ERROR` (exit 9)
+  instead of returning an empty result. Path search and content search share one
+  walker, so the same rule applies to both: an unreadable requested root is a
+  failure, while unreadable nested entries are still skipped and the readable
+  results are returned.
 
 ### Fixed
 
@@ -135,6 +140,10 @@ All notable changes to this project are recorded here. The format follows
 - A write into an unwritable directory is now reported as `STORAGE_ERROR`
   (exit 9) instead of `INTERNAL_ERROR` (exit 1); the message names only the
   caller's path, never the resolved host path or the temporary name.
+- Copy, move and undo over an unreadable file report `STORAGE_ERROR` (exit 9)
+  with the caller's workspace-relative path in the message and in
+  `error.details.path`. The operating system's message no longer carries the
+  resolved host path, and hashing never falls back to it.
 - The non-empty-directory refusal now points at the real CLI flags
   (`--recursive --confirm-recursive`) instead of the Core keyword.
 - The recursive-delete warning states plainly that the deletion is recoverable

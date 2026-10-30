@@ -33,11 +33,12 @@ def hash_file(path: Path, *, display_path: str | None = None) -> str:
     """Stream a file through SHA-256; never loads the whole file into memory.
 
     ``display_path`` is the caller-facing path used in error details. Callers that
-    hold a resolved path should pass the workspace-relative form, so a failure
-    never reports the host path.
+    hold a resolved path must pass the workspace-relative form; when it is
+    omitted only the file name is used, so a failure never reports the resolved
+    host path.
     """
 
-    display = str(path) if display_path is None else display_path
+    display = path.name if display_path is None else display_path
     digest = hashlib.sha256()
     try:
         with path.open("rb") as handle:

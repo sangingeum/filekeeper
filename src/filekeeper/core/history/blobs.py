@@ -51,7 +51,10 @@ class BlobStore:
             atomic_write_bytes(target, data, mode=0o600, fsync=self.fsync)
             os.chmod(target.parent, stat.S_IRWXU)
         except OSError as exc:  # pragma: no cover - filesystem failure
-            raise StorageError(f"cannot write blob: {exc}", details={"hash": digest}) from exc
+            raise StorageError(
+                f"cannot write blob: {exc.strerror or type(exc).__name__}",
+                details={"hash": digest},
+            ) from exc
         return digest
 
     def get_bytes(self, digest: str) -> bytes:
@@ -65,7 +68,9 @@ class BlobStore:
                 "blob is missing from the store", details={"hash": normalize_hash(digest)}
             ) from exc
         except OSError as exc:  # pragma: no cover - filesystem failure
-            raise StorageError(f"cannot read blob: {exc}") from exc
+            raise StorageError(
+                f"cannot read blob: {exc.strerror or type(exc).__name__}"
+            ) from exc
         actual = hash_bytes(data)
         if actual != normalize_hash(digest):
             raise StorageError(

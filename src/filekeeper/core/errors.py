@@ -258,9 +258,20 @@ class NotImplementedYetError(FilekeeperError, NotImplementedError):
 def storage_failure(action: str, path: str, exc: OSError) -> StorageError:
     """Build the :class:`StorageError` for a failed filesystem call on ``path``.
 
-    ``path`` is the caller-facing, workspace-relative path. An ``OSError``'s own
-    message embeds the resolved host path, so only its standard reason phrase is
-    carried into the message; the host path never leaves Core.
+    ``path`` is the caller-facing path: the workspace-relative form for anything
+    inside a workspace. An ``OSError``'s own message embeds the resolved host
+    path, so only its standard reason phrase is carried into the message.
+
+    Guaranteed: a workspace file or directory is never named by its resolved
+    host path in a :class:`StorageError`, neither in the message nor in
+    ``details``. Every construction site that has a workspace path in hand
+    passes the relative form, and :func:`filekeeper.core.safety.hashing.hash_file`
+    never falls back to the resolved path.
+
+    Not covered: locations the operator chooses rather than workspace content —
+    the state directory and its database, and the configuration file. Those
+    errors report the location as the operator supplied it, and their message
+    still carries only the reason phrase.
     """
 
     reason = exc.strerror or type(exc).__name__

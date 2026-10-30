@@ -422,3 +422,14 @@ error object. Its process exit code is taken from the first failed entry's code
 instead of always being 3. That keeps the documented meaning of each exit code on
 the command that produced it, and a mixed batch still exits non-zero. No exit-code
 number or mapping changed, and no new error code was added.
+
+
+Path search and content search share one directory walker, so the same rule
+applies to `keeper file search`: an unreadable requested root raises
+`STORAGE_ERROR` rather than returning an empty, misleadingly successful result.
+Unreadable nested entries are still skipped and the readable results are
+returned. The rule is "an unreadable root is a failure, an unreadable child is
+not" — the caller named the root, so the tool may not answer its question with
+silence. The mutation and undo surfaces obey the same rule: copy, move and undo
+raise the same error with the caller's relative path when they cannot read or
+hash a file they were asked to act on.
