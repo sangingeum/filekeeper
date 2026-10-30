@@ -8,7 +8,7 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "filekeeper",
+    "filekeeper-cli",
     "filekeeper-mcp",
 ]
 
@@ -212,7 +212,7 @@ wheels = [
 ]
 
 [[package]]
-name = "filekeeper"
+name = "filekeeper-cli"
 version = "0.1.0"
 source = { editable = "." }
 
@@ -241,13 +241,13 @@ name = "filekeeper-mcp"
 version = "0.1.0"
 source = { editable = "packages/filekeeper-mcp" }
 dependencies = [
-    { name = "filekeeper" },
+    { name = "filekeeper-cli" },
     { name = "mcp" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "filekeeper", editable = "." },
+    { name = "filekeeper-cli", editable = "." },
     { name = "mcp", specifier = ">=2.3,<3" },
 ]
 

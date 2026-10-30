@@ -1,5 +1,5 @@
 [project]
-name = "filekeeper"
+name = "filekeeper-cli"
 version = "0.1.0"
 description = "Safe, predictable filesystem operations for humans and AI agents, with atomic writes and workspace confinement."
 readme = "README.md"

@@ -28,12 +28,13 @@ Not in this release, and deliberately so:
 ## Install
 
 ```bash
-uv tool install filekeeper      # or: pip install filekeeper
+uv tool install filekeeper-cli  # or: pip install filekeeper-cli
 keeper --help
 ```
 
-Requires Python 3.11 to 3.13. The published `filekeeper` package has **no
-third-party dependencies**. The MCP server is a separate distribution, so
+Requires Python 3.11 to 3.13. The published `filekeeper-cli` distribution has
+**no third-party dependencies**; it installs the `filekeeper` import package and
+the `keeper` console script. The MCP server is a separate distribution, so
 installing the CLI never pulls in the MCP SDK:
 
 ```bash

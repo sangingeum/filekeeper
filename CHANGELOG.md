@@ -8,9 +8,9 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
-- Two-distribution layout: `filekeeper` (Core + CLI, no third-party runtime
-  dependencies) and `filekeeper-mcp` (the MCP server, depending on
-  `filekeeper>=0.1,<0.2` and the pinned MCP SDK).
+- Two-distribution layout: `filekeeper-cli` (Core + CLI, no third-party runtime
+  dependencies; the import package stays `filekeeper`) and `filekeeper-mcp` (the
+  MCP server, depending on `filekeeper-cli>=0.1,<0.2` and the pinned MCP SDK).
 - Workspace registration and selection, with precedence `--workspace`, `--root`,
   then the configured default. Removal never touches the workspace's files.
 - Project-local per-workspace state at `<workspace>/.filekeeper/` (opt-in global

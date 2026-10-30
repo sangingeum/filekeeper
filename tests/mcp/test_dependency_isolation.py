@@ -1,6 +1,6 @@
 """The two-distribution boundary, proved in both directions.
 
-Direction one: a wheel install of ``filekeeper`` alone neither declares nor can
+Direction one: a wheel install of ``filekeeper-cli`` alone neither declares nor can
 import the MCP SDK. Direction two: a wheel install of ``filekeeper-mcp`` brings
 Core and the SDK and exposes the console script. The second direction therefore
 fails if the adapter's dependency is ever dropped from its metadata.
@@ -70,7 +70,7 @@ def wheels(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
         [_uv(), "build", "--wheel", "--out-dir", str(adapter_dir), str(ADAPTER_ROOT)],
         cwd=output,
     )
-    core = next(core_dir.glob("filekeeper-0.1.0-*.whl"))
+    core = next(core_dir.glob("filekeeper_cli-0.1.0-*.whl"))
     adapter = next(adapter_dir.glob("filekeeper_mcp-0.1.0-*.whl"))
     return core, adapter
 

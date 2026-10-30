@@ -41,7 +41,7 @@ is the same authority as `--workspace`.
 ## The CLI uses `argparse`, not a CLI framework
 
 Core must be dependency-free, and the review requires that installing the CLI does
-not pull in the MCP SDK. Keeping the whole `filekeeper` distribution at zero
+not pull in the MCP SDK. Keeping the whole `filekeeper-cli` distribution at zero
 third-party dependencies is simpler to state and verify than "Core is clean but the
 CLI is not". `argparse` covers the command tree; the cost is a little more
 boilerplate in `cli/app.py`.
@@ -324,8 +324,8 @@ The specification placed `mcp/` inside `src/filekeeper/` while also requiring Co
 to stay free of MCP SDK dependencies. Both cannot hold in one distribution: a
 single package would pull the SDK into every CLI install. The design review's
 two-distribution layout therefore wins. `filekeeper-mcp` depends on
-`filekeeper>=0.1,<0.2` and on the SDK; `filekeeper` keeps an empty dependency
-list, and a wheel-level test proves both directions.
+`filekeeper-cli>=0.1,<0.2` and on the SDK; `filekeeper-cli` keeps an empty
+dependency list, and a wheel-level test proves both directions.
 
 The SDK is pinned to `mcp>=2.3,<3`. Version 2.x renamed the ergonomic server class
 to `MCPServer` (from `FastMCP`) and changed how handlers and transports are
@@ -433,3 +433,15 @@ not" — the caller named the root, so the tool may not answer its question with
 silence. The mutation and undo surfaces obey the same rule: copy, move and undo
 raise the same error with the caller's relative path when they cannot read or
 hash a file they were asked to act on.
+
+## The PyPI distribution is named `filekeeper-cli`, the import package is `filekeeper`
+
+PyPI rejected `filekeeper` as too similar to existing project names, so the
+distribution is published as `filekeeper-cli`. The import package and the
+console script keep their names: `import filekeeper` works, and the command is
+still `keeper`. The name split is deliberate — the import package is the
+product's identity and renaming it would churn every user, test and document for
+a packaging constraint. The MCP distribution keeps its own name,
+`filekeeper-mcp`, and depends on `filekeeper-cli`. It is registered and
+published only after `filekeeper-cli` exists on PyPI, because PyPI accepts one
+pending project at a time.

@@ -20,7 +20,7 @@ classifiers = [
     "Topic :: System :: Filesystems",
 ]
 dependencies = [
-    "filekeeper>=0.1,<0.2",
+    "filekeeper-cli>=0.1,<0.2",
     # Pinned to the major version this server was built and tested against. The
     # SDK's server API changed between 1.x and 2.x; see docs/decisions.md.
     "mcp>=2.3,<3",
@@ -42,4 +42,4 @@ module-name = "filekeeper_mcp"
 module-root = "src"
 
 [tool.uv.sources]
-filekeeper = { workspace = true }
+filekeeper-cli = { workspace = true }

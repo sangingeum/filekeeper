@@ -4,9 +4,9 @@ The Model Context Protocol server for [Filekeeper](../..). It is a thin adapter:
 every tool delegates to the `filekeeper` Core library, so an operation behaves
 identically whether it arrives through the CLI or through MCP.
 
-This is a **separate distribution**. `pip install filekeeper` installs only Core
-and the `keeper` CLI and never pulls the MCP SDK. `pip install filekeeper-mcp`
-installs both.
+This is a **separate distribution**. `pip install filekeeper-cli` installs only
+Core and the `keeper` CLI and never pulls the MCP SDK. `pip install
+filekeeper-mcp` installs both.
 
 ## Install and run
 

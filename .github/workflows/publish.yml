@@ -1,0 +1,107 @@
+name: publish
+
+# A tag push (v*) is the release signal: it builds, re-tests the tagged tree and
+# uploads to PyPI through trusted publishing (OIDC). The manual trigger is for
+# building and inspecting the artefacts of the current commit; it never uploads,
+# because PyPI cannot accept the same version twice.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the project and its development dependencies
+        run: uv sync
+
+      - name: Run the test suite
+        run: uv run pytest
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type-check
+        run: uv run mypy
+
+  publish:
+    name: publish
+    needs: test
+    runs-on: ubuntu-latest
+    # No `environment:` key: trusted publishing is registered for all
+    # environments, so the OIDC subject is unrestricted.
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tooling
+        run: python -m pip install build twine
+
+      - name: Build the distributions
+        run: python -m build
+
+      - name: Check the distribution metadata
+        run: python -m twine check dist/*
+
+      - name: Keep the artefacts for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+          if-no-files-found: error
+
+      - name: Check that the tag names the version being built
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          python - <<'PY'
+          import pathlib, re, sys
+          version = re.search(
+              r'^version = "([^"]+)"',
+              pathlib.Path("pyproject.toml").read_text(encoding="utf-8"),
+              re.MULTILINE,
+          ).group(1)
+          tag = "${{ github.ref_name }}".lstrip("v")
+          if tag != version:
+              sys.exit(f"tag {tag} does not match project version {version}")
+          print(f"publishing version {version}")
+          PY
+
+      - name: Publish to PyPI
+        # Tag pushes only. A manual run builds and inspects; it never uploads.
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # No password: the action mints a short-lived token from the OIDC token
+        # in this job. No environment key, matching the unrestricted subject.
+
+      # The MCP server is a separate distribution and is deliberately not
+      # published here yet. It can only be registered after filekeeper-cli
+      # exists on PyPI (PyPI allows one pending project at a time).
+      #
+      # - name: Publish the MCP server
+      #   if: startsWith(github.ref, 'refs/tags/v')
+      #   uses: pypa/gh-action-pypi-publish@release/v1
+      #   with:
+      #     packages-dir: packages/filekeeper-mcp/dist/
