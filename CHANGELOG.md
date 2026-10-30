@@ -137,6 +137,11 @@ All notable changes to this project are recorded here. The format follows
   `..` traversal keeps `PATH_OUTSIDE_WORKSPACE` (4), an absolute path outside
   the workspace is `ABSOLUTE_PATH_OUTSIDE_WORKSPACE` (6), and a symlink whose
   target escapes is `SYMLINK_ESCAPE_REFUSED` (11).
+- `apply-patch` failures now report the workspace-relative path of the file that
+  could not be changed, and the `PARTIAL_RECOVERY` (exit 8) and `PATCH_FAILED`
+  (exit 7) `error.details.cause` value never carries the resolved host path or a
+  raw `[Errno ...]` repr. Errors raised by the guarded step keep their own
+  caller-facing message.
 - A write into an unwritable directory is now reported as `STORAGE_ERROR`
   (exit 9) instead of `INTERNAL_ERROR` (exit 1); the message names only the
   caller's path, never the resolved host path or the temporary name.

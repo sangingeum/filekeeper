@@ -35,6 +35,7 @@ from typing import Any, Literal
 from ..diffing import DiffLine, join_lines, split_lines, unified_diff_text
 from ..errors import (
     ContentConflictError,
+    FilekeeperError,
     MatchCountMismatchError,
     NoMatchError,
     PartialRecoveryError,
@@ -1001,6 +1002,41 @@ def _roll_back(plans: list[_Plan]) -> tuple[list[str], list[str]]:
     return restored, failed
 
 
+def _failure_cause(plan: _Plan | None, exc: BaseException) -> str:
+    """Describe a patch failure without naming a resolved host path.
+
+    A raw ``OSError``'s text embeds the absolute path it was given, so only its
+    standard reason phrase is used, together with the workspace-relative path of
+    the file being changed. Errors the project already builds carry a
+    caller-facing message and are passed through unchanged; when that message
+    names no file of its own, the relative path is appended so the cause still
+    says which file failed.
+
+    This helper must never raise: it runs while unwinding a failed patch, and a
+    fault here would mask the failure it is describing.
+    """
+
+    relative = plan.relative if plan is not None else None
+    if isinstance(exc, FilekeeperError):
+        try:
+            message = str(exc)
+        except Exception:  # pragma: no cover - a faulty __str__ must not mask the failure
+            message = type(exc).__name__
+        if relative is None or relative in message:
+            return message
+        return f"{message} ({relative})"
+
+    try:
+        reason = getattr(exc, "strerror", None)
+    except Exception:  # pragma: no cover - exotic exception objects
+        reason = None
+    if not isinstance(reason, str) or not reason:
+        reason = type(exc).__name__
+    if relative is None:
+        return reason
+    return f"cannot modify {relative}: {reason}"
+
+
 def apply_patch(
     handle: WorkspaceHandle,
     patch_text: str,
@@ -1134,9 +1170,11 @@ def apply_patch(
         skipped = begun.skipped
         warnings.extend(begun.warnings)
 
+    current: _Plan | None = None
     try:
         for plan in plans:
             active.append(plan)
+            current = plan
             if plan.after_exists:
                 atomic_write_bytes(
                     plan.absolute,
@@ -1159,12 +1197,12 @@ def apply_patch(
                 details={
                     "restored": restored,
                     "not_restored": failed,
-                    "cause": str(exc),
+                    "cause": _failure_cause(current, exc),
                 },
             ) from exc
         raise PatchFailedError(
             "patch failed; every affected file was restored to its pre-patch state",
-            details={"rolled_back": restored, "cause": str(exc)},
+            details={"rolled_back": restored, "cause": _failure_cause(current, exc)},
         ) from exc
 
     undo_available = False
