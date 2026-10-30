@@ -79,8 +79,17 @@ def test_json_flag_after_subcommand(run_cli, workspace_root: Path) -> None:
 
 def test_line_range_flags(run_cli, workspace_root: Path) -> None:
     run_cli("workspace", "create", "project", str(workspace_root))
-    code, out, _ = run_cli("--root", str(workspace_root), "file", "read", "notes.txt",
-                           "--from-line", "2", "--to-line", "2")
+    code, out, _ = run_cli(
+        "--root",
+        str(workspace_root),
+        "file",
+        "read",
+        "notes.txt",
+        "--from-line",
+        "2",
+        "--to-line",
+        "2",
+    )
     assert code == exit_codes.SUCCESS
     assert out == "beta\n"
 

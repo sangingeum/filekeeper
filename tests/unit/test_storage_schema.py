@@ -63,9 +63,7 @@ def test_newer_schema_is_refused(tmp_path: Path) -> None:
         connection.execute(
             "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
         )
-        connection.execute(
-            "INSERT INTO schema_migrations (version, applied_at) VALUES (99, 'now')"
-        )
+        connection.execute("INSERT INTO schema_migrations (version, applied_at) VALUES (99, 'now')")
         connection.commit()
         with pytest.raises(MigrationError):
             database.migrate_workspace(connection)

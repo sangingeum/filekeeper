@@ -236,7 +236,7 @@ Adjust the limits in `config.toml` under `[filekeeper]` in the home directory.
 ```python
 from filekeeper import Filekeeper
 
-app = Filekeeper()                     # or Filekeeper(home="/path/to/home")
+app = Filekeeper()  # or Filekeeper(home="/path/to/home")
 app.init()
 workspace = app.create_workspace("notes", "/home/me/notes")
 service = app.workspace(name="notes")  # or root="/path" for a transient workspace

@@ -79,9 +79,7 @@ def search_files(
         raise ValidationError("max_results must be positive", details={"max_results": limit})
     limit = min(limit, handle.config.max_search_results)
 
-    resolved = resolve_path(
-        handle.root, path, must_exist=True, state_dir=handle.state_dir
-    )
+    resolved = resolve_path(handle.root, path, must_exist=True, state_dir=handle.state_dir)
     matches: list[str] = []
     truncated = False
     for candidate in _walk_files(handle, resolved.absolute):
@@ -129,9 +127,7 @@ def search_content(
                 f"invalid regular expression: {exc}", details={"query": query}
             ) from exc
 
-    resolved = resolve_path(
-        handle.root, path, must_exist=True, state_dir=handle.state_dir
-    )
+    resolved = resolve_path(handle.root, path, must_exist=True, state_dir=handle.state_dir)
 
     matches: list[ContentMatch] = []
     truncated = False

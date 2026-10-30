@@ -103,9 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
     ws_show.add_argument("workspace_ref", metavar="NAME")
     ws_show.set_defaults(handler=_handle_workspace_show)
 
-    ws_use = workspace_sub.add_parser(
-        "use", parents=[common], help="make a workspace the default"
-    )
+    ws_use = workspace_sub.add_parser("use", parents=[common], help="make a workspace the default")
     ws_use.add_argument("workspace_ref", metavar="NAME")
     ws_use.set_defaults(handler=_handle_workspace_use)
 
@@ -158,9 +156,7 @@ def build_parser() -> argparse.ArgumentParser:
     exists_parser.add_argument("path")
     exists_parser.set_defaults(handler=_handle_exists)
 
-    search = file_sub.add_parser(
-        "search", parents=[common], help="find paths matching a glob"
-    )
+    search = file_sub.add_parser("search", parents=[common], help="find paths matching a glob")
     search.add_argument("path")
     search.add_argument("pattern", metavar="GLOB")
     search.add_argument("--max-results", type=int)
@@ -234,13 +230,9 @@ def build_parser() -> argparse.ArgumentParser:
     delete.set_defaults(handler=_handle_delete)
 
     directory_group = groups.add_parser("dir", parents=[common], help="directory operations")
-    directory_sub = directory_group.add_subparsers(
-        dest="action", metavar="ACTION", required=True
-    )
+    directory_sub = directory_group.add_subparsers(dest="action", metavar="ACTION", required=True)
 
-    dir_create = directory_sub.add_parser(
-        "create", parents=[common], help="create a directory"
-    )
+    dir_create = directory_sub.add_parser("create", parents=[common], help="create a directory")
     dir_create.add_argument("path")
     dir_create.add_argument("--parents", action="store_true")
     dir_create.add_argument("--dry-run", action="store_true")
@@ -252,9 +244,7 @@ def build_parser() -> argparse.ArgumentParser:
     dir_move.add_argument("--dry-run", action="store_true")
     dir_move.set_defaults(handler=_handle_dir_move)
 
-    dir_delete = directory_sub.add_parser(
-        "delete", parents=[common], help="delete a directory"
-    )
+    dir_delete = directory_sub.add_parser("delete", parents=[common], help="delete a directory")
     dir_delete.add_argument("path")
     dir_delete.add_argument("--recursive", action="store_true")
     dir_delete.add_argument(
@@ -440,9 +430,7 @@ def _handle_info(context: _Context) -> int:
 
 def _handle_hash(context: _Context) -> int:
     digest = context.service.get_file_hash(context.args.path)
-    context.emit(
-        {"ok": True, "path": context.args.path, "content_hash": digest}, digest
-    )
+    context.emit({"ok": True, "path": context.args.path, "content_hash": digest}, digest)
     return exit_codes.SUCCESS
 
 

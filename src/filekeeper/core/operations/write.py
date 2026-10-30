@@ -20,15 +20,14 @@ from pathlib import Path
 
 from ..errors import (
     AlreadyExistsError,
-    BinaryContentRefusedError,
     ContentConflictError,
     FilekeeperError,
     LimitExceededError,
     NotAFileError,
+    SensitivePathRefusedError,
     StorageError,
     SymlinkWriteRefusedError,
     ValidationError,
-    SensitivePathRefusedError,
 )
 from ..models import MutationResult, OperationItemResult
 from ..paths import ResolvedPath, ensure_parent_directory, resolve_path
@@ -70,9 +69,7 @@ def _guard_sensitive(
     if warning is not None:
         warnings.append(warning)
     if reason is not None:
-        warnings.append(
-            f"sensitive-path refusal was overridden for {resolved.relative} ({reason})"
-        )
+        warnings.append(f"sensitive-path refusal was overridden for {resolved.relative} ({reason})")
     return tuple(warnings)
 
 
@@ -153,9 +150,7 @@ def create_file(
 ) -> MutationResult:
     """Create a file. Refuses an existing target unless ``expected_absent`` is False."""
 
-    resolved = resolve_path(
-        handle.root, path, for_write=True, state_dir=handle.state_dir
-    )
+    resolved = resolve_path(handle.root, path, for_write=True, state_dir=handle.state_dir)
     if resolved.exists and resolved.absolute.is_dir():
         raise NotAFileError("path is a directory", details={"path": resolved.relative})
     if resolved.exists and expected_absent:
@@ -163,9 +158,7 @@ def create_file(
             "file already exists; pass expected_absent=False to overwrite",
             details={"path": resolved.relative},
         )
-    warnings = _guard_sensitive(
-        handle, resolved, allow_sensitive_write=allow_sensitive_write
-    )
+    warnings = _guard_sensitive(handle, resolved, allow_sensitive_write=allow_sensitive_write)
     ensure_parent_directory(resolved)
 
     before_hash = hash_file(resolved.absolute) if resolved.exists else None
@@ -202,14 +195,10 @@ def write_file(
     exactly as given: they are never normalised.
     """
 
-    resolved = resolve_path(
-        handle.root, path, for_write=True, state_dir=handle.state_dir
-    )
+    resolved = resolve_path(handle.root, path, for_write=True, state_dir=handle.state_dir)
     if resolved.exists and resolved.absolute.is_dir():
         raise NotAFileError("path is a directory", details={"path": resolved.relative})
-    warnings = _guard_sensitive(
-        handle, resolved, allow_sensitive_write=allow_sensitive_write
-    )
+    warnings = _guard_sensitive(handle, resolved, allow_sensitive_write=allow_sensitive_write)
     ensure_parent_directory(resolved)
 
     before_hash = hash_file(resolved.absolute) if resolved.exists else None
@@ -231,9 +220,7 @@ def write_file(
             )
 
     if resolved.exists:
-        effective_encoding, has_bom = _encoding_for_existing(
-            resolved.absolute, encoding=encoding
-        )
+        effective_encoding, has_bom = _encoding_for_existing(resolved.absolute, encoding=encoding)
     else:
         effective_encoding, has_bom = encoding or "utf-8", False
 

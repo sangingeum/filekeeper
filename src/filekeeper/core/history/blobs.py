@@ -51,9 +51,7 @@ class BlobStore:
             atomic_write_bytes(target, data, mode=0o600, fsync=self.fsync)
             os.chmod(target.parent, stat.S_IRWXU)
         except OSError as exc:  # pragma: no cover - filesystem failure
-            raise StorageError(
-                f"cannot write blob: {exc}", details={"hash": digest}
-            ) from exc
+            raise StorageError(f"cannot write blob: {exc}", details={"hash": digest}) from exc
         return digest
 
     def get_bytes(self, digest: str) -> bytes:

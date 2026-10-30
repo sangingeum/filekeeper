@@ -71,9 +71,7 @@ def _read_window(
         data = file_handle.read(limit)
     truncated = size > len(data)
 
-    text, profile = decode_bytes(
-        data, encoding=encoding, partial=truncated, path=resolved.relative
-    )
+    text, profile = decode_bytes(data, encoding=encoding, partial=truncated, path=resolved.relative)
     return text, size, truncated, profile
 
 
@@ -233,16 +231,16 @@ def list_directory(
         try:
             children = sorted(directory.iterdir(), key=lambda item: item.name)
         except OSError as exc:
-            raise ValidationError(
-                f"cannot list directory: {exc}", details={"path": path}
-            ) from exc
+            raise ValidationError(f"cannot list directory: {exc}", details={"path": path}) from exc
         for child in children:
             if len(entries) >= limit:
                 truncated = True
                 return
             is_symlink = child.is_symlink()
-            if not is_symlink and child.is_dir() and Path(os.path.realpath(child)) == (
-                canonical_state_dir
+            if (
+                not is_symlink
+                and child.is_dir()
+                and Path(os.path.realpath(child)) == (canonical_state_dir)
             ):
                 continue
             if is_symlink:
@@ -264,11 +262,7 @@ def list_directory(
                         is_symlink=is_symlink,
                     )
                 )
-            if (
-                recursive
-                and kind == "directory"
-                and depth + 1 <= handle.config.max_recursion_depth
-            ):
+            if recursive and kind == "directory" and depth + 1 <= handle.config.max_recursion_depth:
                 add(child, depth + 1)
 
     add(base, 0)
@@ -283,9 +277,7 @@ def list_directory(
 def get_file_info(handle: WorkspaceHandle, path: str) -> PathInfo:
     """Metadata plus, for regular files, a hash and text characteristics."""
 
-    resolved = resolve_path(
-        handle.root, path, must_exist=True, state_dir=handle.state_dir
-    )
+    resolved = resolve_path(handle.root, path, must_exist=True, state_dir=handle.state_dir)
     target = resolved.absolute
     link_path = resolved.link_path
     info = link_path.lstat()

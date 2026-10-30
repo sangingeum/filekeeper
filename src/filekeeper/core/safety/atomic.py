@@ -62,9 +62,7 @@ def atomic_write_bytes(
         )
     parent = destination.parent
     if not parent.is_dir():
-        raise StorageError(
-            "destination directory does not exist", details={"path": str(parent)}
-        )
+        raise StorageError("destination directory does not exist", details={"path": str(parent)})
 
     existing_mode: int | None = None
     try:

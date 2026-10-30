@@ -186,7 +186,8 @@ class MutationResult:
     affected_count: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return _jsonable(asdict(self))
+        payload: dict[str, Any] = _jsonable(asdict(self))
+        return payload
 
 
 def _jsonable(value: Any) -> Any:

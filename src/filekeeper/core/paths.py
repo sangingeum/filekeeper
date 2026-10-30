@@ -121,9 +121,7 @@ def resolve_path(
             details={"root": str(root)},
         )
 
-    raw = os.fspath(user_path)
-    if not isinstance(raw, str):  # pragma: no cover - Path always yields str on POSIX
-        raw = str(raw)
+    raw = str(user_path)
     if "\x00" in raw:
         raise ValidationError("path contains a NUL byte", details={"path": "<contains NUL>"})
     if raw.strip() == "":
@@ -189,9 +187,7 @@ def resolve_path(
             if not resolved.absolute.is_file():
                 raise NotAFileError("path is not a regular file", details={"path": raw})
         if expect == "directory" and not resolved.absolute.is_dir():
-            raise FilekeeperNotADirectoryError(
-                "path is not a directory", details={"path": raw}
-            )
+            raise FilekeeperNotADirectoryError("path is not a directory", details={"path": raw})
 
     return resolved
 

@@ -17,7 +17,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import database, operations
-from .config import CONFIG_FILENAME, DEFAULT_CONFIG_TOML, Config, STATE_DIR_NAME, load_config, resolve_home
+from .config import (
+    CONFIG_FILENAME,
+    DEFAULT_CONFIG_TOML,
+    STATE_DIR_NAME,
+    Config,
+    load_config,
+    resolve_home,
+)
 from .errors import NoWorkspaceSelectedError, ValidationError
 from .history.blobs import BlobStore
 from .models import (
@@ -118,9 +125,7 @@ class Filekeeper:
                 )
             registered = self.registry.find_by_root(candidate)
             if registered is not None:
-                return FilekeeperService(
-                    handle_for(registered, self.config, self.home), self
-                )
+                return FilekeeperService(handle_for(registered, self.config, self.home), self)
             transient = Workspace(
                 id=f"ws-transient-{database.uuid_token()}",
                 name=candidate.name or "workspace",
@@ -139,9 +144,7 @@ class Filekeeper:
                 # A single registered workspace is not an arbitrary choice; using it
                 # keeps the common one-project setup frictionless without ever
                 # guessing between several.
-                return FilekeeperService(
-                    handle_for(workspaces[0], self.config, self.home), self
-                )
+                return FilekeeperService(handle_for(workspaces[0], self.config, self.home), self)
             available = ", ".join(workspace.name for workspace in workspaces)
             raise NoWorkspaceSelectedError(
                 "no workspace selected: pass --workspace or --root, or register a "
@@ -198,9 +201,7 @@ class FilekeeperService:
         return target
 
     def blob_store(self) -> BlobStore:
-        return BlobStore(
-            self.state_database_path().parent / "blobs", fsync=self.config.fsync
-        )
+        return BlobStore(self.state_database_path().parent / "blobs", fsync=self.config.fsync)
 
     # -- read and inspection ------------------------------------------------
     def read_file(
@@ -265,9 +266,7 @@ class FilekeeperService:
     def search_files(
         self, path: str, glob: str, *, max_results: int | None = None
     ) -> PathSearchResult:
-        return operations.search.search_files(
-            self.handle, path, glob, max_results=max_results
-        )
+        return operations.search.search_files(self.handle, path, glob, max_results=max_results)
 
     def search_content(
         self,

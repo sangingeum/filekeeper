@@ -12,12 +12,11 @@ from pathlib import Path
 
 import pytest
 
-from filekeeper.core.config import Config
-from filekeeper.core.service import Filekeeper
-
 # The CLI module is imported through its package to exercise the published entry
 # point exactly as the console script does.
 from filekeeper.cli import main as cli_main
+from filekeeper.core.config import Config
+from filekeeper.core.service import Filekeeper
 
 
 @pytest.fixture

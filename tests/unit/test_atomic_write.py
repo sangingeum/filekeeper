@@ -85,9 +85,7 @@ def test_symlink_destination_is_refused(tmp_path: Path) -> None:
     assert real.read_bytes() == b"real\n"
 
 
-def test_verification_failure_is_reported(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_verification_failure_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     target = tmp_path / "verify.txt"
     monkeypatch.setattr(
         "filekeeper.core.safety.atomic.hash_file",

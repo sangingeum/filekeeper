@@ -52,7 +52,8 @@ def normalize_hash(value: str) -> str:
     candidate = value.strip()
     if candidate.startswith(PREFIX):
         candidate = candidate[len(PREFIX) :]
-    if len(candidate) != _HEX_LENGTH or any(char not in "0123456789abcdefABCDEF" for char in candidate):
+    valid_characters = set("0123456789abcdefABCDEF")
+    if len(candidate) != _HEX_LENGTH or any(char not in valid_characters for char in candidate):
         raise ValidationError(
             "not a SHA-256 hash; expected 64 hexadecimal characters, optionally "
             "prefixed with 'sha256:'",

@@ -10,22 +10,21 @@ from __future__ import annotations
 
 import os
 import shutil
+from pathlib import Path
 
 from ..errors import (
     AlreadyExistsError,
-    NotADirectoryError as FilekeeperNotADirectoryError,
     PathNotFoundError,
     StorageError,
     ValidationError,
+)
+from ..errors import (
+    NotADirectoryError as FilekeeperNotADirectoryError,
 )
 from ..models import MutationResult, OperationItemResult
 from ..paths import ensure_parent_directory, resolve_path
 from ..safety.atomic import fsync_directory
 from ..workspace import WorkspaceHandle
-
-
-def _state_dir(handle: WorkspaceHandle) -> str:
-    return str(handle.state_dir)
 
 
 def create_directory(
@@ -37,13 +36,9 @@ def create_directory(
 ) -> MutationResult:
     """Create a directory. ``parents`` also creates missing ancestors."""
 
-    resolved = resolve_path(
-        handle.root, path, for_write=True, state_dir=handle.state_dir
-    )
+    resolved = resolve_path(handle.root, path, for_write=True, state_dir=handle.state_dir)
     if resolved.exists:
-        raise AlreadyExistsError(
-            "path already exists", details={"path": resolved.relative}
-        )
+        raise AlreadyExistsError("path already exists", details={"path": resolved.relative})
     target = resolved.absolute
     if not parents and not target.parent.is_dir():
         raise ValidationError(
@@ -120,7 +115,10 @@ def move_directory(
     if destination_path == source_path or source_path in destination_path.parents:
         raise ValidationError(
             "cannot move a directory into itself",
-            details={"source": source_resolved.relative, "destination": destination_resolved.relative},
+            details={
+                "source": source_resolved.relative,
+                "destination": destination_resolved.relative,
+            },
         )
 
     if not dry_run:
@@ -129,7 +127,10 @@ def move_directory(
         except OSError as exc:
             raise StorageError(
                 f"cannot move directory: {exc}; moving across filesystems is not supported",
-                details={"source": source_resolved.relative, "destination": destination_resolved.relative},
+                details={
+                    "source": source_resolved.relative,
+                    "destination": destination_resolved.relative,
+                },
             ) from exc
         fsync_directory(source_path.parent)
         fsync_directory(destination_path.parent)
@@ -153,7 +154,7 @@ def move_directory(
     )
 
 
-def _count_entries(root) -> int:
+def _count_entries(root: Path) -> int:
     total = 0
     for _, directories, files in os.walk(root, followlinks=False):
         total += len(directories) + len(files)

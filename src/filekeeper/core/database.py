@@ -146,9 +146,7 @@ def connect(path: Path) -> sqlite3.Connection:
     try:
         connection = sqlite3.connect(path, timeout=10.0)
     except sqlite3.Error as exc:
-        raise StorageError(
-            f"cannot open database: {exc}", details={"path": str(path)}
-        ) from exc
+        raise StorageError(f"cannot open database: {exc}", details={"path": str(path)}) from exc
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA journal_mode = WAL")
     # Full synchronous mode: a committed record survives an OS crash, which the
@@ -164,8 +162,7 @@ def _current_version(connection: sqlite3.Connection) -> int:
     row = connection.execute("SELECT MAX(version) AS version FROM schema_migrations").fetchone()
     if row is None or row["version"] is None:
         return 0
-    value = int(row["version"])
-    return value
+    return int(row["version"])
 
 
 def migrate(

@@ -32,7 +32,8 @@ def jsonable(value: Any) -> Any:
     """Convert dataclasses, enums, tuples and paths into JSON-ready values."""
 
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return {field.name: jsonable(getattr(value, field.name)) for field in dataclasses.fields(value)}
+        fields = dataclasses.fields(value)
+        return {field.name: jsonable(getattr(value, field.name)) for field in fields}
     if isinstance(value, Enum):
         return value.value
     if isinstance(value, Path):
@@ -130,7 +131,9 @@ def path_search(result: PathSearchResult) -> str:
 
 
 def content_search(result: ContentSearchResult) -> str:
-    lines = [f"{match.path}:{match.line_number}:{match.column}: {match.line}" for match in result.matches]
+    lines = [
+        f"{match.path}:{match.line_number}:{match.column}: {match.line}" for match in result.matches
+    ]
     if result.truncated:
         lines.append("... truncated; narrow the query or raise the result limit")
     return "\n".join(lines)

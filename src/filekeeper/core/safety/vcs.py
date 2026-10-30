@@ -27,7 +27,7 @@ def git_ignored(root: Path, target: Path) -> bool | None:
     if not _inside_git_worktree(root, target):
         return None
     try:
-        completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        completed = subprocess.run(
             ["git", "-C", str(root), "check-ignore", "--quiet", "--", str(target)],
             capture_output=True,
             timeout=_TIMEOUT_SECONDS,

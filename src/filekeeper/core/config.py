@@ -88,9 +88,7 @@ def load_config(home: Path) -> Config:
 
     section = raw.get("filekeeper", raw)
     if not isinstance(section, dict):
-        raise StorageError(
-            "configuration file must contain a table", details={"path": str(path)}
-        )
+        raise StorageError("configuration file must contain a table", details={"path": str(path)})
 
     known = {field_info.name for field_info in fields(Config)}
     values: dict[str, object] = {}
