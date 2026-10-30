@@ -27,12 +27,20 @@ from .config import (
 )
 from .errors import NoWorkspaceSelectedError, ValidationError
 from .history.blobs import BlobStore
+from .history.journal import OperationJournal
+from .history.repository import diff_operation as read_diff
+from .history.repository import get_operation as read_operation
+from .history.repository import list_history as read_history
+from .history.undo import undo_last as perform_undo_last
+from .history.undo import undo_operation as perform_undo
 from .models import (
     ContentSearchResult,
     DirectoryListing,
     ExistsResult,
     FileReadResult,
     MutationResult,
+    OperationDiff,
+    OperationRecord,
     PathInfo,
     PathSearchResult,
     ReadManyEntry,
@@ -168,6 +176,7 @@ class FilekeeperService:
         self.handle = handle
         self.owner = owner
         self.registered = registered
+        self._journal: OperationJournal | None = None
 
     @property
     def name(self) -> str:
@@ -185,9 +194,8 @@ class FilekeeperService:
     def state_database_path(self) -> Path:
         """Create (if needed) and return this workspace's state database.
 
-        Nothing in this release writes history, but the schema exists and is
-        migrated here so the foundation is testable before the history layer
-        lands.
+        The database is created on the first mutation that needs durable history,
+        which is also when ``.filekeeper/`` is created and gitignored.
         """
 
         if self.registered and self.handle.workspace_id is not None:
@@ -202,6 +210,102 @@ class FilekeeperService:
 
     def blob_store(self) -> BlobStore:
         return BlobStore(self.state_database_path().parent / "blobs", fsync=self.config.fsync)
+
+    # -- history ------------------------------------------------------------
+    def _open_journal(self, *, create: bool) -> OperationJournal | None:
+        """Return the journal, reconciling pending work once per service instance.
+
+        Reading history never creates the state directory: a workspace that was
+        never mutated simply has no history.
+        """
+
+        if self._journal is not None:
+            return self._journal
+        database_path = self.handle.state_dir / STATE_DATABASE_NAME
+        if not create and not database_path.exists():
+            return None
+        if create:
+            database_path = self.state_database_path()
+        journal = OperationJournal(
+            database_path,
+            root=self.root,
+            workspace_id=self.handle.workspace_id or "local",
+            config=self.config,
+        )
+        journal.reconcile()
+        self._journal = journal
+        return journal
+
+    @property
+    def history(self) -> OperationJournal:
+        journal = self._open_journal(create=True)
+        assert journal is not None
+        return journal
+
+    def reconcile_history(self) -> tuple[str, ...]:
+        """Resolve operations left pending by an interrupted run."""
+
+        return self.history.reconcile()
+
+    def get_operation(self, operation_id: str) -> OperationRecord:
+        journal = self._open_journal(create=False)
+        if journal is None:
+            from .errors import OperationNotFoundError
+
+            raise OperationNotFoundError(
+                "no operation with that id in this workspace",
+                details={"operation_id": operation_id},
+            )
+        return read_operation(journal, operation_id)
+
+    def list_history(
+        self,
+        *,
+        path: str | None = None,
+        actor: str | None = None,
+        task_id: str | None = None,
+        limit: int = 50,
+    ) -> tuple[OperationRecord, ...]:
+        journal = self._open_journal(create=False)
+        if journal is None:
+            return ()
+        return read_history(journal, path=path, actor=actor, task_id=task_id, limit=limit)
+
+    def diff_operation(self, operation_id: str) -> OperationDiff:
+        journal = self._open_journal(create=False)
+        if journal is None:
+            from .errors import OperationNotFoundError
+
+            raise OperationNotFoundError(
+                "no operation with that id in this workspace",
+                details={"operation_id": operation_id},
+            )
+        return read_diff(journal, operation_id)
+
+    def undo(
+        self,
+        operation_id: str,
+        *,
+        actor: str | None = None,
+        task_id: str | None = None,
+    ) -> MutationResult:
+        return perform_undo(
+            self.history,
+            operation_id,
+            workspace_name=self.name,
+            actor=actor,
+            task_id=task_id,
+        )
+
+    def undo_last(
+        self,
+        *,
+        actor: str | None = None,
+        task_id: str | None = None,
+    ) -> MutationResult:
+        return perform_undo_last(
+            self.history, workspace_name=self.name, actor=actor, task_id=task_id
+        )
 
     # -- read and inspection ------------------------------------------------
     def read_file(
@@ -298,6 +402,8 @@ class FilekeeperService:
         encoding: str = "utf-8",
         allow_sensitive_write: bool = False,
         dry_run: bool = False,
+        actor: str | None = None,
+        task_id: str | None = None,
     ) -> MutationResult:
         return operations.write.create_file(
             self.handle,
@@ -307,6 +413,9 @@ class FilekeeperService:
             encoding=encoding,
             allow_sensitive_write=allow_sensitive_write,
             dry_run=dry_run,
+            journal=None if dry_run else self.history,
+            actor=actor,
+            task_id=task_id,
         )
 
     def write_file(
@@ -318,6 +427,8 @@ class FilekeeperService:
         encoding: str | None = None,
         allow_sensitive_write: bool = False,
         dry_run: bool = False,
+        actor: str | None = None,
+        task_id: str | None = None,
     ) -> MutationResult:
         return operations.write.write_file(
             self.handle,
@@ -327,6 +438,9 @@ class FilekeeperService:
             encoding=encoding,
             allow_sensitive_write=allow_sensitive_write,
             dry_run=dry_run,
+            journal=None if dry_run else self.history,
+            actor=actor,
+            task_id=task_id,
         )
 
     def copy_file(
@@ -337,6 +451,8 @@ class FilekeeperService:
         expected_destination_hash: str | None = None,
         allow_sensitive_write: bool = False,
         dry_run: bool = False,
+        actor: str | None = None,
+        task_id: str | None = None,
     ) -> MutationResult:
         return operations.write.copy_file(
             self.handle,
@@ -345,6 +461,9 @@ class FilekeeperService:
             expected_destination_hash=expected_destination_hash,
             allow_sensitive_write=allow_sensitive_write,
             dry_run=dry_run,
+            journal=None if dry_run else self.history,
+            actor=actor,
+            task_id=task_id,
         )
 
     def move_file(
@@ -355,6 +474,8 @@ class FilekeeperService:
         overwrite: bool = False,
         allow_sensitive_write: bool = False,
         dry_run: bool = False,
+        actor: str | None = None,
+        task_id: str | None = None,
     ) -> MutationResult:
         return operations.write.move_file(
             self.handle,
@@ -363,6 +484,9 @@ class FilekeeperService:
             overwrite=overwrite,
             allow_sensitive_write=allow_sensitive_write,
             dry_run=dry_run,
+            journal=None if dry_run else self.history,
+            actor=actor,
+            task_id=task_id,
         )
 
     def delete_file(
@@ -371,23 +495,55 @@ class FilekeeperService:
         *,
         expected_hash: str | None = None,
         dry_run: bool = False,
+        actor: str | None = None,
+        task_id: str | None = None,
     ) -> MutationResult:
         return operations.write.delete_file(
-            self.handle, path, expected_hash=expected_hash, dry_run=dry_run
+            self.handle,
+            path,
+            expected_hash=expected_hash,
+            dry_run=dry_run,
+            journal=None if dry_run else self.history,
+            actor=actor,
+            task_id=task_id,
         )
 
     def create_directory(
-        self, path: str, *, parents: bool = False, dry_run: bool = False
+        self,
+        path: str,
+        *,
+        parents: bool = False,
+        dry_run: bool = False,
+        actor: str | None = None,
+        task_id: str | None = None,
     ) -> MutationResult:
         return operations.directory.create_directory(
-            self.handle, path, parents=parents, dry_run=dry_run
+            self.handle,
+            path,
+            parents=parents,
+            dry_run=dry_run,
+            journal=None if dry_run else self.history,
+            actor=actor,
+            task_id=task_id,
         )
 
     def move_directory(
-        self, source: str, destination: str, *, dry_run: bool = False
+        self,
+        source: str,
+        destination: str,
+        *,
+        dry_run: bool = False,
+        actor: str | None = None,
+        task_id: str | None = None,
     ) -> MutationResult:
         return operations.directory.move_directory(
-            self.handle, source, destination, dry_run=dry_run
+            self.handle,
+            source,
+            destination,
+            dry_run=dry_run,
+            journal=None if dry_run else self.history,
+            actor=actor,
+            task_id=task_id,
         )
 
     def delete_directory(
@@ -397,6 +553,8 @@ class FilekeeperService:
         recursive: bool = False,
         confirm_recursive: bool = False,
         dry_run: bool = False,
+        actor: str | None = None,
+        task_id: str | None = None,
     ) -> MutationResult:
         return operations.directory.delete_directory(
             self.handle,
@@ -404,6 +562,9 @@ class FilekeeperService:
             recursive=recursive,
             confirm_recursive=confirm_recursive,
             dry_run=dry_run,
+            journal=None if dry_run else self.history,
+            actor=actor,
+            task_id=task_id,
         )
 
 

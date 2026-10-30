@@ -35,6 +35,9 @@ class ErrorCode(StrEnum):
     NO_WORKSPACE_SELECTED = "NO_WORKSPACE_SELECTED"
     STORAGE_ERROR = "STORAGE_ERROR"
     MIGRATION_ERROR = "MIGRATION_ERROR"
+    OPERATION_NOT_FOUND = "OPERATION_NOT_FOUND"
+    UNDO_CONFLICT = "UNDO_CONFLICT"
+    HISTORY_UNAVAILABLE = "HISTORY_UNAVAILABLE"
     NOT_IMPLEMENTED_YET = "NOT_IMPLEMENTED_YET"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
@@ -179,6 +182,24 @@ class StorageError(FilekeeperError):
 
 class MigrationError(FilekeeperError):
     code = ErrorCode.MIGRATION_ERROR
+
+
+class OperationNotFoundError(FilekeeperError):
+    """No operation with that id is recorded in this workspace."""
+
+    code = ErrorCode.OPERATION_NOT_FOUND
+
+
+class UndoConflictError(FilekeeperError):
+    """Undo would destroy a later change; nothing was modified."""
+
+    code = ErrorCode.UNDO_CONFLICT
+
+
+class HistoryUnavailableError(FilekeeperError):
+    """The bytes needed to undo are missing, corrupt or were never stored."""
+
+    code = ErrorCode.HISTORY_UNAVAILABLE
 
 
 class NotImplementedYetError(FilekeeperError, NotImplementedError):

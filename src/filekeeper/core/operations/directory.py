@@ -1,15 +1,16 @@
 """Directory creation, moving and deletion.
 
 Deleting a tree never happens without both ``recursive`` and
-``confirm_recursive``: a recursive delete destroys content that this release
-cannot restore (history lands later), so the confirmation is a separate,
-explicit argument rather than an inference from "it had children".
+``confirm_recursive``: the confirmation is a separate, explicit argument rather
+than an inference from "it had children". With history in place the deleted
+bytes are recoverable through ``keeper history undo``, but the removal itself is
+still a sequence of filesystem calls and is never atomic across the tree.
 """
 
 from __future__ import annotations
 
 import os
-import shutil
+import stat
 from pathlib import Path
 
 from ..errors import (
@@ -21,10 +22,57 @@ from ..errors import (
 from ..errors import (
     NotADirectoryError as FilekeeperNotADirectoryError,
 )
+from ..history.journal import OperationJournal, PendingItem
 from ..models import MutationResult, OperationItemResult
 from ..paths import ensure_parent_directory, resolve_path
 from ..safety.atomic import fsync_directory
+from ..safety.hashing import hash_file
 from ..workspace import WorkspaceHandle
+
+
+def _mode(path: Path) -> int | None:
+    try:
+        return stat.S_IMODE(path.stat().st_mode)
+    except OSError:
+        return None
+
+
+def _walk_tree(root: Path) -> list[Path]:
+    """Every directory and file under ``root``, parents before children."""
+
+    found: list[Path] = [root]
+    for current, directories, files in os.walk(root, followlinks=False):
+        base = Path(current)
+        for name in sorted(directories):
+            found.append(base / name)
+        for name in sorted(files):
+            found.append(base / name)
+    return found
+
+
+def _file_bytes(path: Path, cap: int) -> tuple[str | None, bytes | None]:
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return None, None
+    if size > cap:
+        try:
+            return hash_file(path), None
+        except OSError:
+            return None, None
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None, None
+    from ..safety.hashing import hash_bytes
+
+    return hash_bytes(data), data
+
+
+def _remove_file(path: Path) -> None:
+    """Remove one file. A separate function so failure injection has a seam."""
+
+    path.unlink()
 
 
 def create_directory(
@@ -33,6 +81,9 @@ def create_directory(
     *,
     parents: bool = False,
     dry_run: bool = False,
+    journal: OperationJournal | None = None,
+    actor: str | None = None,
+    task_id: str | None = None,
 ) -> MutationResult:
     """Create a directory. ``parents`` also creates missing ancestors."""
 
@@ -46,7 +97,37 @@ def create_directory(
             details={"path": resolved.relative},
         )
 
+    created: list[Path] = [target]
+    if parents:
+        missing: list[Path] = []
+        candidate = target.parent
+        while candidate != handle.root and not candidate.exists():
+            missing.append(candidate)
+            candidate = candidate.parent
+        created = [*reversed(missing), target]
+
+    operation_id: str | None = None
     if not dry_run:
+        if journal is not None:
+            items = [
+                PendingItem(
+                    relative_path=directory.relative_to(handle.root).as_posix(),
+                    item_type="directory",
+                    before_exists=False,
+                    after_exists=True,
+                    after_mode=0o777 & ~_umask(),
+                )
+                for directory in created
+            ]
+            begun = journal.begin(
+                operation_type="create_directory",
+                target_path=resolved.relative,
+                summary=f"Created directory {resolved.relative}.",
+                items=items,
+                actor=actor,
+                task_id=task_id,
+            )
+            operation_id = begun.operation_id
         try:
             if parents:
                 target.mkdir(parents=True, exist_ok=True)
@@ -57,12 +138,16 @@ def create_directory(
                 "path already exists", details={"path": resolved.relative}
             ) from exc
         except OSError as exc:
+            if journal is not None and operation_id is not None:
+                journal.abort(operation_id)
             raise StorageError(
                 f"cannot create directory: {exc}", details={"path": resolved.relative}
             ) from exc
         fsync_directory(target.parent)
         if parents:
             fsync_directory(target)
+        if journal is not None and operation_id is not None:
+            journal.commit(operation_id)
 
     return MutationResult(
         workspace=handle.name,
@@ -71,10 +156,18 @@ def create_directory(
         before_hash=None,
         after_hash=None,
         summary=f"{'Would create' if dry_run else 'Created'} directory {resolved.relative}.",
+        operation_id=operation_id,
+        undo_available=not dry_run and operation_id is not None,
         dry_run=dry_run,
         items=(OperationItemResult(path=resolved.relative, change="created"),),
         affected_count=1,
     )
+
+
+def _umask() -> int:
+    current = os.umask(0)
+    os.umask(current)
+    return current
 
 
 def move_directory(
@@ -83,6 +176,9 @@ def move_directory(
     destination: str,
     *,
     dry_run: bool = False,
+    journal: OperationJournal | None = None,
+    actor: str | None = None,
+    task_id: str | None = None,
 ) -> MutationResult:
     """Rename a directory inside the workspace. Cross-device moves are refused."""
 
@@ -121,19 +217,96 @@ def move_directory(
             },
         )
 
-    if not dry_run:
-        try:
+    operation_id: str | None = None
+    skipped: list[str] = []
+    if not dry_run and journal is not None:
+        cap = handle.config.max_history_blob_bytes
+        items: list[PendingItem] = []
+        for entry in _walk_tree(source_path):
+            relative = entry.relative_to(handle.root).as_posix()
+            suffix = entry.relative_to(source_path).as_posix()
+            moved_relative = (
+                destination_resolved.relative
+                if suffix == "."
+                else f"{destination_resolved.relative}/{suffix}"
+            )
+            if entry.is_dir():
+                items.append(
+                    PendingItem(
+                        relative_path=relative,
+                        item_type="directory",
+                        before_exists=True,
+                        after_exists=False,
+                        before_mode=_mode(entry),
+                    )
+                )
+                items.append(
+                    PendingItem(
+                        relative_path=moved_relative,
+                        item_type="directory",
+                        before_exists=False,
+                        after_exists=True,
+                        after_mode=_mode(entry),
+                    )
+                )
+            else:
+                digest, data = _file_bytes(entry, cap)
+                if data is None:
+                    skipped.append(relative)
+                items.append(
+                    PendingItem(
+                        relative_path=relative,
+                        item_type="file",
+                        before_exists=True,
+                        after_exists=False,
+                        before_bytes=data,
+                        before_hash=digest,
+                        before_mode=_mode(entry),
+                    )
+                )
+                items.append(
+                    PendingItem(
+                        relative_path=moved_relative,
+                        item_type="file",
+                        before_exists=False,
+                        after_exists=True,
+                        after_bytes=data,
+                        after_hash=digest,
+                        after_mode=_mode(entry),
+                    )
+                )
+        begun = journal.begin(
+            operation_type="move_directory",
+            target_path=destination_resolved.relative,
+            summary=(
+                f"Moved directory {source_resolved.relative} "
+                f"to {destination_resolved.relative}."
+            ),
+            items=items,
+            actor=actor,
+            task_id=task_id,
+        )
+        operation_id = begun.operation_id
+        skipped = list(begun.skipped)
+
+    try:
+        if not dry_run:
             os.replace(source_path, destination_path)
-        except OSError as exc:
-            raise StorageError(
-                f"cannot move directory: {exc}; moving across filesystems is not supported",
-                details={
-                    "source": source_resolved.relative,
-                    "destination": destination_resolved.relative,
-                },
-            ) from exc
-        fsync_directory(source_path.parent)
-        fsync_directory(destination_path.parent)
+            fsync_directory(source_path.parent)
+            fsync_directory(destination_path.parent)
+            if journal is not None and operation_id is not None:
+                journal.commit(operation_id)
+    except OSError as exc:
+        if journal is not None and operation_id is not None:
+            journal.abort(operation_id)
+        raise StorageError(
+            f"cannot move directory: {exc.strerror or type(exc).__name__}; moving across "
+            "filesystems is not supported",
+            details={
+                "source": source_resolved.relative,
+                "destination": destination_resolved.relative,
+            },
+        ) from exc
 
     return MutationResult(
         workspace=handle.name,
@@ -145,12 +318,15 @@ def move_directory(
             f"{'Would move' if dry_run else 'Moved'} directory "
             f"{source_resolved.relative} to {destination_resolved.relative}."
         ),
+        operation_id=operation_id,
+        undo_available=not dry_run and operation_id is not None and not skipped,
         dry_run=dry_run,
         items=(
             OperationItemResult(path=source_resolved.relative, change="moved"),
             OperationItemResult(path=destination_resolved.relative, change="created"),
         ),
         affected_count=1,
+        history_skipped=tuple(sorted(set(skipped))),
     )
 
 
@@ -168,6 +344,9 @@ def delete_directory(
     recursive: bool = False,
     confirm_recursive: bool = False,
     dry_run: bool = False,
+    journal: OperationJournal | None = None,
+    actor: str | None = None,
+    task_id: str | None = None,
 ) -> MutationResult:
     """Delete an empty directory, or a whole tree with two explicit flags."""
 
@@ -196,21 +375,79 @@ def delete_directory(
     if entries > 0 and not confirm_recursive:
         raise ValidationError(
             "recursive deletion requires explicit confirmation "
-            "(--recursive --confirm-recursive); this release cannot undo a deleted tree",
+            "(--recursive --confirm-recursive)",
             details={"path": resolved.relative, "entries": entries},
         )
+
+    operation_id: str | None = None
+    warnings: tuple[str, ...] = ()
+    skipped: tuple[str, ...] = ()
+    if not dry_run and journal is not None:
+        cap = handle.config.max_history_blob_bytes
+        items: list[PendingItem] = []
+        for entry in _walk_tree(target):
+            relative = entry.relative_to(handle.root).as_posix()
+            if entry.is_dir():
+                items.append(
+                    PendingItem(
+                        relative_path=relative,
+                        item_type="directory",
+                        before_exists=True,
+                        after_exists=False,
+                        before_mode=_mode(entry),
+                    )
+                )
+            else:
+                digest, data = _file_bytes(entry, cap)
+                items.append(
+                    PendingItem(
+                        relative_path=relative,
+                        item_type="file",
+                        before_exists=True,
+                        after_exists=False,
+                        before_bytes=data,
+                        before_hash=digest,
+                        before_mode=_mode(entry),
+                    )
+                )
+        begun = journal.begin(
+            operation_type="delete_directory",
+            target_path=resolved.relative,
+            summary=f"Deleted directory {resolved.relative} ({entries} entries).",
+            items=items,
+            actor=actor,
+            task_id=task_id,
+        )
+        operation_id = begun.operation_id
+        skipped = begun.skipped
+        warnings = begun.warnings
 
     if not dry_run:
         try:
             if recursive:
-                shutil.rmtree(target)
+                # Files first, deepest first, so a failure part-way leaves a
+                # truthful partial state that startup reconciliation can resolve.
+                for entry in sorted(
+                    _walk_tree(target),
+                    key=lambda item: len(item.parts),
+                    reverse=True,
+                ):
+                    if entry.is_dir():
+                        entry.rmdir()
+                    else:
+                        _remove_file(entry)
             else:
                 target.rmdir()
         except OSError as exc:
+            # Leave the operation pending: reconciliation inspects the actual
+            # state and reports the partial application honestly.
             raise StorageError(
-                f"cannot delete directory: {exc}", details={"path": resolved.relative}
+                f"cannot delete directory: {exc.strerror or type(exc).__name__}",
+                details={"path": resolved.relative},
             ) from exc
         fsync_directory(target.parent)
+        if journal is not None and operation_id is not None:
+            journal.commit(operation_id)
 
     return MutationResult(
         workspace=handle.name,
@@ -222,14 +459,18 @@ def delete_directory(
             f"{'Would delete' if dry_run else 'Deleted'} directory "
             f"{resolved.relative} ({entries} entries)."
         ),
+        operation_id=operation_id,
+        undo_available=not dry_run and operation_id is not None and not skipped,
         dry_run=dry_run,
         items=(OperationItemResult(path=resolved.relative, change="deleted"),),
         affected_count=entries,
         warnings=(
+            *warnings,
             "A directory tree is deleted as a sequence of filesystem calls: the "
-            "deletion cannot be undone in this release, and is never atomic across "
-            "the tree.",
+            "deletion is recoverable through history, but it is never atomic "
+            "across the tree.",
         )
         if entries > 0
-        else (),
+        else warnings,
+        history_skipped=skipped,
     )

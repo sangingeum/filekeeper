@@ -1,14 +1,18 @@
 """Whole-file mutations.
 
-Every write goes through :func:`atomic_write_bytes`, so each single-file mutation
-in this release is already crash-safe: after a failure the file holds either its
-old bytes or its new bytes, never a truncated mix. History recording arrives in a
-later release; the result objects already carry the fields it will fill
-(``operation_id`` is ``None``, ``undo_available`` is ``False``).
+Every write goes through :func:`atomic_write_bytes`, so each single-file
+replacement is atomic: after a failure the file holds either its old bytes or
+its new bytes, never a truncated mix.
 
-Copy and move touch two paths. They are recoverable in the sense that each
-individual step is a complete atomic replacement or rename, but they are **not**
-atomic across the pair, and nothing in this release can roll them back.
+Each mutation is also recorded in the durable history before the filesystem is
+touched: blobs first, then the pending operation, then the atomic replacement,
+then the commit mark. A failure before the replacement marks the operation
+failed; a failure after it leaves the operation pending for startup
+reconciliation, which never discards the recoverable copy.
+
+Copy and move touch two paths. Each individual step is a complete atomic
+replacement or rename, but the pair is **not** atomic across both paths: it is
+recoverable through history, never all-or-nothing.
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ from ..errors import (
     SymlinkWriteRefusedError,
     ValidationError,
 )
+from ..history.journal import OperationJournal, PendingItem
 from ..models import MutationResult, OperationItemResult
 from ..paths import ResolvedPath, ensure_parent_directory, resolve_path
 from ..safety.atomic import atomic_write_bytes, fsync_directory
@@ -42,6 +47,29 @@ SECRET_FLAG_HINT = (
     "pass allow_sensitive_write=True in Core, or the CLI flag "
     "--i-accept-secret-write-risk, if you really mean to write credential material"
 )
+
+
+def _default_file_mode() -> int:
+    current = os.umask(0)
+    os.umask(current)
+    return 0o666 & ~current
+
+
+def _snapshot(path: Path, cap: int) -> tuple[str | None, bytes | None, bool]:
+    """Return ``(hash, bytes, exists)`` for a file, without reading oversize content.
+
+    ``bytes`` is ``None`` for an oversize file: the hash is still recorded, the
+    content is not. That is what makes the history cap visible instead of silent.
+    """
+
+    try:
+        info = path.stat()
+    except FileNotFoundError:
+        return None, None, False
+    if info.st_size > cap:
+        return hash_file(path), None, True
+    data = path.read_bytes()
+    return hash_bytes(data), data, True
 
 
 def _check_size(handle: WorkspaceHandle, data: bytes, path: str) -> None:
@@ -101,23 +129,68 @@ def _after_write(
     resolved: ResolvedPath,
     data: bytes,
     *,
+    operation_type: str,
     change: str,
     before_hash: str | None,
+    before_bytes: bytes | None,
+    before_exists: bool,
+    before_mode: int | None,
     dry_run: bool,
     warnings: tuple[str, ...],
     past_verb: str,
     dry_verb: str,
+    journal: OperationJournal | None,
+    actor: str | None,
+    task_id: str | None,
 ) -> MutationResult:
     after_hash = hash_bytes(data)
+    operation_id: str | None = None
+    skipped: tuple[str, ...] = ()
+    undo_available = False
+
     if not dry_run:
-        mode = _target_mode(resolved)
-        after_hash = atomic_write_bytes(
-            resolved.absolute,
-            data,
-            mode=mode,
-            fsync=handle.config.fsync,
-            display_path=resolved.relative,
+        pending = PendingItem(
+            relative_path=resolved.relative,
+            item_type="file",
+            before_exists=before_exists,
+            after_exists=True,
+            before_bytes=before_bytes,
+            after_bytes=data,
+            before_hash=before_hash,
+            after_hash=after_hash,
+            before_mode=before_mode,
+            after_mode=_target_mode(resolved) or _default_file_mode(),
         )
+        if journal is not None:
+            begun = journal.begin(
+                operation_type=operation_type,
+                target_path=resolved.relative,
+                summary=f"{past_verb} {resolved.relative}.",
+                items=[pending],
+                actor=actor,
+                task_id=task_id,
+                before_hash=before_hash,
+                after_hash=after_hash,
+            )
+            operation_id = begun.operation_id
+            skipped = begun.skipped
+            warnings = (*warnings, *begun.warnings)
+        try:
+            after_hash = atomic_write_bytes(
+                resolved.absolute,
+                data,
+                mode=_target_mode(resolved),
+                fsync=handle.config.fsync,
+                display_path=resolved.relative,
+            )
+        except FilekeeperError:
+            if journal is not None and operation_id is not None:
+                journal.abort(operation_id)
+            raise
+        if journal is not None and operation_id is not None:
+            journal.commit(operation_id)
+            undo_available = not skipped
+
     return MutationResult(
         workspace=handle.name,
         path=resolved.relative,
@@ -127,6 +200,8 @@ def _after_write(
         summary=(
             f"{dry_verb} {resolved.relative}." if dry_run else f"{past_verb} {resolved.relative}."
         ),
+        operation_id=operation_id,
+        undo_available=undo_available,
         dry_run=dry_run,
         warnings=warnings,
         items=(
@@ -139,6 +214,7 @@ def _after_write(
             ),
         ),
         affected_count=1,
+        history_skipped=skipped,
     )
 
 
@@ -151,6 +227,9 @@ def create_file(
     encoding: str = "utf-8",
     allow_sensitive_write: bool = False,
     dry_run: bool = False,
+    journal: OperationJournal | None = None,
+    actor: str | None = None,
+    task_id: str | None = None,
 ) -> MutationResult:
     """Create a file. Refuses an existing target unless ``expected_absent`` is False."""
 
@@ -165,7 +244,10 @@ def create_file(
     warnings = _guard_sensitive(handle, resolved, allow_sensitive_write=allow_sensitive_write)
     ensure_parent_directory(resolved)
 
-    before_hash = hash_file(resolved.absolute) if resolved.exists else None
+    before_hash, before_bytes, before_exists = _snapshot(
+        resolved.absolute, handle.config.max_history_blob_bytes
+    )
+    before_mode = _target_mode(resolved) if before_exists else None
     data = encode_text(content, encoding=encoding, has_bom=False)
     _check_size(handle, data, resolved.relative)
 
@@ -173,12 +255,19 @@ def create_file(
         handle,
         resolved,
         data,
-        change="modified" if resolved.exists else "created",
+        operation_type="create_file",
+        change="modified" if before_exists else "created",
         before_hash=before_hash,
+        before_bytes=before_bytes,
+        before_exists=before_exists,
+        before_mode=before_mode,
         dry_run=dry_run,
         warnings=warnings,
-        past_verb="Created" if not resolved.exists else "Overwrote",
-        dry_verb="Would create" if not resolved.exists else "Would overwrite",
+        past_verb="Created" if not before_exists else "Overwrote",
+        dry_verb="Would create" if not before_exists else "Would overwrite",
+        journal=journal,
+        actor=actor,
+        task_id=task_id,
     )
 
 
@@ -191,6 +280,9 @@ def write_file(
     encoding: str | None = None,
     allow_sensitive_write: bool = False,
     dry_run: bool = False,
+    journal: OperationJournal | None = None,
+    actor: str | None = None,
+    task_id: str | None = None,
 ) -> MutationResult:
     """Replace a file's complete content, optionally guarded by its current hash.
 
@@ -205,7 +297,10 @@ def write_file(
     warnings = _guard_sensitive(handle, resolved, allow_sensitive_write=allow_sensitive_write)
     ensure_parent_directory(resolved)
 
-    before_hash = hash_file(resolved.absolute) if resolved.exists else None
+    before_hash, before_bytes, before_exists = _snapshot(
+        resolved.absolute, handle.config.max_history_blob_bytes
+    )
+    before_mode = _target_mode(resolved) if before_exists else None
     if expected_hash is not None:
         wanted = normalize_hash(expected_hash)
         if before_hash is None:
@@ -223,7 +318,7 @@ def write_file(
                 },
             )
 
-    if resolved.exists:
+    if before_exists:
         effective_encoding, has_bom = _encoding_for_existing(resolved.absolute, encoding=encoding)
     else:
         effective_encoding, has_bom = encoding or "utf-8", False
@@ -235,12 +330,19 @@ def write_file(
         handle,
         resolved,
         data,
-        change="modified" if resolved.exists else "created",
+        operation_type="write_file",
+        change="modified" if before_exists else "created",
         before_hash=before_hash,
+        before_bytes=before_bytes,
+        before_exists=before_exists,
+        before_mode=before_mode,
         dry_run=dry_run,
         warnings=warnings,
         past_verb="Wrote",
         dry_verb="Would write",
+        journal=journal,
+        actor=actor,
+        task_id=task_id,
     )
 
 
@@ -252,6 +354,9 @@ def copy_file(
     expected_destination_hash: str | None = None,
     allow_sensitive_write: bool = False,
     dry_run: bool = False,
+    journal: OperationJournal | None = None,
+    actor: str | None = None,
+    task_id: str | None = None,
 ) -> MutationResult:
     """Copy a file's bytes to a new path. Never overwrites an unguarded destination."""
 
@@ -272,12 +377,16 @@ def copy_file(
         raise ValidationError("source and destination are the same path")
 
     destination_before: str | None = None
+    destination_bytes: bytes | None = None
+    destination_exists = False
     if destination_resolved.exists:
         if destination_resolved.absolute.is_dir():
             raise NotAFileError(
                 "destination is a directory", details={"path": destination_resolved.relative}
             )
-        destination_before = hash_file(destination_resolved.absolute)
+        destination_before, destination_bytes, destination_exists = _snapshot(
+            destination_resolved.absolute, handle.config.max_history_blob_bytes
+        )
         if expected_destination_hash is None:
             raise AlreadyExistsError(
                 "destination already exists; pass expected_destination_hash to "
@@ -285,7 +394,7 @@ def copy_file(
                 details={"path": destination_resolved.relative},
             )
         wanted = normalize_hash(expected_destination_hash)
-        if not hashes_match(wanted, destination_before):
+        if not hashes_match(wanted, destination_before or ""):
             raise ContentConflictError(
                 "destination changed since it was read; refusing to overwrite",
                 details={
@@ -314,12 +423,19 @@ def copy_file(
         handle,
         destination_resolved,
         data,
-        change="modified" if destination_resolved.exists else "created",
+        operation_type="copy_file",
+        change="modified" if destination_exists else "created",
         before_hash=destination_before,
+        before_bytes=destination_bytes,
+        before_exists=destination_exists,
+        before_mode=_target_mode(destination_resolved) if destination_exists else None,
         dry_run=dry_run,
         warnings=warnings,
         past_verb="Copied",
         dry_verb="Would copy",
+        journal=journal,
+        actor=actor,
+        task_id=task_id,
     )
     item = OperationItemResult(
         path=source_resolved.relative,
@@ -338,10 +454,13 @@ def copy_file(
             f"{'Would copy' if dry_run else 'Copied'} {source_resolved.relative} "
             f"to {destination_resolved.relative}."
         ),
+        operation_id=result.operation_id,
+        undo_available=result.undo_available,
         dry_run=dry_run,
         warnings=result.warnings,
         items=(*result.items, item),
         affected_count=1,
+        history_skipped=result.history_skipped,
     )
 
 
@@ -353,6 +472,9 @@ def move_file(
     overwrite: bool = False,
     allow_sensitive_write: bool = False,
     dry_run: bool = False,
+    journal: OperationJournal | None = None,
+    actor: str | None = None,
+    task_id: str | None = None,
 ) -> MutationResult:
     """Rename a file. Refuses an existing destination unless ``overwrite`` is set."""
 
@@ -369,6 +491,19 @@ def move_file(
             details={"path": source_resolved.relative},
         )
     source_hash = hash_file(source_resolved.absolute)
+    source_mode = _target_mode(source_resolved)
+    cap = handle.config.max_history_blob_bytes
+    source_bytes: bytes | None
+    try:
+        source_bytes = (
+            source_resolved.absolute.read_bytes()
+            if source_resolved.absolute.stat().st_size <= cap
+            else None
+        )
+    except OSError as exc:
+        raise StorageError(
+            f"cannot read source: {exc}", details={"path": source_resolved.relative}
+        ) from exc
 
     destination_resolved = resolve_path(
         handle.root, destination, for_write=True, state_dir=handle.state_dir
@@ -390,16 +525,61 @@ def move_file(
         allow_sensitive_write=allow_sensitive_write,
     )
     ensure_parent_directory(destination_resolved)
-    destination_before = (
-        hash_file(destination_resolved.absolute) if destination_resolved.exists else None
+    destination_before, destination_bytes, destination_exists = _snapshot(
+        destination_resolved.absolute, cap
     )
 
+    operation_id: str | None = None
+    skipped: tuple[str, ...] = ()
     if not dry_run:
+        if journal is not None:
+            begun = journal.begin(
+                operation_type="move_file",
+                target_path=destination_resolved.relative,
+                summary=(
+                    f"Moved {source_resolved.relative} to {destination_resolved.relative}."
+                ),
+                items=[
+                    PendingItem(
+                        relative_path=source_resolved.relative,
+                        item_type="file",
+                        before_exists=True,
+                        after_exists=False,
+                        before_bytes=source_bytes,
+                        before_hash=source_hash,
+                        before_mode=source_mode,
+                    ),
+                    PendingItem(
+                        relative_path=destination_resolved.relative,
+                        item_type="file",
+                        before_exists=destination_exists,
+                        after_exists=True,
+                        before_bytes=destination_bytes,
+                        before_hash=destination_before,
+                        after_bytes=source_bytes,
+                        after_hash=source_hash,
+                        before_mode=_target_mode(destination_resolved)
+                        if destination_exists
+                        else None,
+                        after_mode=source_mode,
+                    ),
+                ],
+                actor=actor,
+                task_id=task_id,
+                before_hash=destination_before,
+                after_hash=source_hash,
+            )
+            operation_id = begun.operation_id
+            skipped = begun.skipped
+            warnings = (*warnings, *begun.warnings)
         try:
             os.replace(source_resolved.absolute, destination_resolved.absolute)
         except OSError as exc:
+            if journal is not None and operation_id is not None:
+                journal.abort(operation_id)
             raise StorageError(
-                f"cannot move file: {exc}; moving across filesystems is not supported",
+                f"cannot move file: {exc.strerror or type(exc).__name__}; moving across "
+                "filesystems is not supported",
                 details={
                     "source": source_resolved.relative,
                     "destination": destination_resolved.relative,
@@ -409,10 +589,14 @@ def move_file(
         fsync_directory(destination_resolved.absolute.parent)
         after_hash = hash_file(destination_resolved.absolute)
         if after_hash != source_hash:
+            if journal is not None and operation_id is not None:
+                journal.abort(operation_id)
             raise StorageError(
                 "moved file content does not match its source",
                 details={"path": destination_resolved.relative},
             )
+        if journal is not None and operation_id is not None:
+            journal.commit(operation_id)
     else:
         after_hash = source_hash
 
@@ -426,6 +610,8 @@ def move_file(
             f"{'Would move' if dry_run else 'Moved'} {source_resolved.relative} "
             f"to {destination_resolved.relative}."
         ),
+        operation_id=operation_id,
+        undo_available=not dry_run and operation_id is not None and not skipped,
         dry_run=dry_run,
         warnings=warnings,
         items=(
@@ -443,6 +629,7 @@ def move_file(
             ),
         ),
         affected_count=1,
+        history_skipped=skipped,
     )
 
 
@@ -452,6 +639,9 @@ def delete_file(
     *,
     expected_hash: str | None = None,
     dry_run: bool = False,
+    journal: OperationJournal | None = None,
+    actor: str | None = None,
+    task_id: str | None = None,
 ) -> MutationResult:
     """Delete a file, optionally guarded by its current hash."""
 
@@ -467,10 +657,12 @@ def delete_file(
             "path is a directory; use the directory delete operation",
             details={"path": resolved.relative},
         )
-    before_hash = hash_file(resolved.absolute)
+    before_hash, before_bytes, _ = _snapshot(
+        resolved.absolute, handle.config.max_history_blob_bytes
+    )
     if expected_hash is not None:
         wanted = normalize_hash(expected_hash)
-        if not hashes_match(wanted, before_hash):
+        if not hashes_match(wanted, before_hash or ""):
             raise ContentConflictError(
                 "file content changed since it was read; refusing to delete",
                 details={
@@ -480,14 +672,42 @@ def delete_file(
                 },
             )
 
+    operation_id: str | None = None
+    skipped: tuple[str, ...] = ()
     if not dry_run:
+        if journal is not None:
+            begun = journal.begin(
+                operation_type="delete_file",
+                target_path=resolved.relative,
+                summary=f"Deleted {resolved.relative}.",
+                items=[
+                    PendingItem(
+                        relative_path=resolved.relative,
+                        item_type="file",
+                        before_exists=True,
+                        after_exists=False,
+                        before_bytes=before_bytes,
+                        before_hash=before_hash,
+                        before_mode=_target_mode(resolved),
+                    )
+                ],
+                actor=actor,
+                task_id=task_id,
+                before_hash=before_hash,
+            )
+            operation_id = begun.operation_id
+            skipped = begun.skipped
         try:
             resolved.absolute.unlink()
         except OSError as exc:
+            if journal is not None and operation_id is not None:
+                journal.abort(operation_id)
             raise StorageError(
                 f"cannot delete file: {exc}", details={"path": resolved.relative}
             ) from exc
         fsync_directory(resolved.absolute.parent)
+        if journal is not None and operation_id is not None:
+            journal.commit(operation_id)
 
     return MutationResult(
         workspace=handle.name,
@@ -496,6 +716,8 @@ def delete_file(
         before_hash=before_hash,
         after_hash=None,
         summary=f"{'Would delete' if dry_run else 'Deleted'} {resolved.relative}.",
+        operation_id=operation_id,
+        undo_available=not dry_run and operation_id is not None and not skipped,
         dry_run=dry_run,
         items=(
             OperationItemResult(
@@ -506,6 +728,7 @@ def delete_file(
             ),
         ),
         affected_count=1,
+        history_skipped=skipped,
     )
 
 

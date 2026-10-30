@@ -20,6 +20,8 @@ PARTIAL_RECOVERY = 8
 STORAGE_ERROR = 9
 SENSITIVE_PATH_REFUSED = 10
 SYMLINK_ESCAPE_REFUSED = 11
+UNDO_CONFLICT = 12
+HISTORY_UNAVAILABLE = 13
 
 _BY_CODE: dict[str, int] = {
     str(ErrorCode.INVALID_ARGUMENT): INVALID_ARGUMENT,
@@ -42,6 +44,9 @@ _BY_CODE: dict[str, int] = {
     str(ErrorCode.CONTENT_CONFLICT): CONFLICT,
     str(ErrorCode.STORAGE_ERROR): STORAGE_ERROR,
     str(ErrorCode.MIGRATION_ERROR): STORAGE_ERROR,
+    str(ErrorCode.OPERATION_NOT_FOUND): PATH_NOT_FOUND,
+    str(ErrorCode.UNDO_CONFLICT): UNDO_CONFLICT,
+    str(ErrorCode.HISTORY_UNAVAILABLE): HISTORY_UNAVAILABLE,
     str(ErrorCode.WORKSPACE_EXISTS): INVALID_ARGUMENT,
     str(ErrorCode.NOT_IMPLEMENTED_YET): GENERAL_ERROR,
     str(ErrorCode.INTERNAL_ERROR): GENERAL_ERROR,
@@ -60,6 +65,8 @@ EXIT_CODE_DOCUMENTATION: tuple[tuple[int, str], ...] = (
     (STORAGE_ERROR, "storage or database error"),
     (SENSITIVE_PATH_REFUSED, "write refused: target looks like credential material"),
     (SYMLINK_ESCAPE_REFUSED, "symlink target outside the workspace"),
+    (UNDO_CONFLICT, "undo refused: the path changed after the operation"),
+    (HISTORY_UNAVAILABLE, "history needed for restore is missing, corrupt or skipped"),
 )
 
 

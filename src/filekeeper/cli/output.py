@@ -21,6 +21,8 @@ from ..core.models import (
     ExistsResult,
     FileReadResult,
     MutationResult,
+    OperationDiff,
+    OperationRecord,
     PathInfo,
     PathSearchResult,
     ReadManyEntry,
@@ -148,10 +150,63 @@ def mutation(result: MutationResult) -> str:
         lines.append(f"after_hash: {result.after_hash}")
     if result.before_hash and result.before_hash != result.after_hash:
         lines.append(f"before_hash: {result.before_hash}")
-    lines.append("operation_id: none (history is not recorded in this release)")
+    if result.operation_id is not None:
+        lines.append(f"operation_id: {result.operation_id}")
+        lines.append(f"undo_available: {'yes' if result.undo_available else 'no'}")
+    elif result.dry_run:
+        lines.append("operation_id: none (dry run: nothing was recorded)")
     for warning in result.warnings:
         lines.append(f"warning: {warning}")
     return "\n".join(lines)
+
+
+def history_list(operations: tuple[OperationRecord, ...]) -> str:
+    if not operations:
+        return "no recorded operations in this workspace"
+    lines = [
+        f"{record.id}  {record.created_at}  {record.status:<9} "
+        f"{record.operation_type:<17} {record.target_path or '-'}"
+        + (f"  [{record.actor}]" if record.actor else "")
+        for record in operations
+    ]
+    return "\n".join(lines)
+
+
+def history_show(record: OperationRecord) -> str:
+    lines = [
+        f"id: {record.id}",
+        f"workspace_id: {record.workspace_id}",
+        f"operation_type: {record.operation_type}",
+        f"status: {record.status}",
+        f"created_at: {record.created_at}",
+        f"target_path: {record.target_path or '-'}",
+        f"actor: {record.actor or '-'}",
+        f"task_id: {record.task_id or '-'}",
+        f"summary: {record.summary or '-'}",
+        f"before_hash: {record.before_hash or '-'}",
+        f"after_hash: {record.after_hash or '-'}",
+        "items:",
+    ]
+    for item in record.items:
+        exists = f"{int(item.before_exists)}->{int(item.after_exists)}"
+        lines.append(
+            f"  {item.item_type:<9} {item.relative_path}  exists {exists}  "
+            f"before {item.before_blob_hash or '-'}  after {item.after_blob_hash or '-'}"
+        )
+    if record.history_skipped:
+        lines.append("history_skipped: " + ", ".join(record.history_skipped))
+    return "\n".join(lines)
+
+
+def history_diff(diff: OperationDiff) -> str:
+    chunks: list[str] = []
+    for entry in diff.items:
+        if entry.is_binary:
+            chunks.append(f"# {entry.path}: binary content, no textual diff")
+            continue
+        if entry.unified_diff:
+            chunks.append(entry.unified_diff.rstrip("\n"))
+    return "\n".join(chunks) if chunks else "no textual differences recorded"
 
 
 def workspace_summary(workspace: Workspace, *, is_default: bool = False) -> str:

@@ -57,6 +57,18 @@ def _add_common(parser: argparse.ArgumentParser, *, suppress: bool) -> None:
         default=default,
         help="Filekeeper home directory (default: FILEKEEPER_HOME or the user data dir)",
     )
+    parser.add_argument(
+        "--actor",
+        metavar="NAME",
+        default=default,
+        help="identity recorded on a mutation, or used as a filter by history list",
+    )
+    parser.add_argument(
+        "--task-id",
+        metavar="ID",
+        default=default,
+        help="optional external task identifier recorded with a mutation",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -255,6 +267,39 @@ def build_parser() -> argparse.ArgumentParser:
     dir_delete.add_argument("--dry-run", action="store_true")
     dir_delete.set_defaults(handler=_handle_dir_delete)
 
+    history = groups.add_parser("history", parents=[common], help="operation history and undo")
+    history_sub = history.add_subparsers(dest="action", metavar="ACTION", required=True)
+
+    history_list = history_sub.add_parser(
+        "list", parents=[common], help="list recorded operations, newest first"
+    )
+    history_list.add_argument("--path", metavar="PATH", help="only operations touching this path")
+    history_list.add_argument("--limit", type=int, default=50, metavar="N")
+    history_list.set_defaults(handler=_handle_history_list)
+
+    history_show = history_sub.add_parser(
+        "show", parents=[common], help="show one operation and its affected paths"
+    )
+    history_show.add_argument("operation_id")
+    history_show.set_defaults(handler=_handle_history_show)
+
+    history_diff = history_sub.add_parser(
+        "diff", parents=[common], help="print the unified diff an operation made"
+    )
+    history_diff.add_argument("operation_id")
+    history_diff.set_defaults(handler=_handle_history_diff)
+
+    history_undo = history_sub.add_parser(
+        "undo", parents=[common], help="restore the state before one operation"
+    )
+    history_undo.add_argument("operation_id")
+    history_undo.set_defaults(handler=_handle_history_undo)
+
+    history_undo_last = history_sub.add_parser(
+        "undo-last", parents=[common], help="undo the most recent operation in this workspace"
+    )
+    history_undo_last.set_defaults(handler=_handle_history_undo_last)
+
     return parser
 
 
@@ -332,8 +377,8 @@ def _handle_workspace_create(context: _Context) -> int:
     context.emit(
         {"ok": True, "workspace": output.jsonable(workspace)},
         f"registered workspace {workspace.name} at {workspace.root_path} ({workspace.id})\n"
-        "state directory .filekeeper/ is created on first mutation; keep it out of "
-        "version control",
+        "state directory .filekeeper/ is created on the first mutation, together with "
+        "a .gitignore entry when this directory is a git repository",
     )
     return exit_codes.SUCCESS
 
@@ -486,6 +531,8 @@ def _handle_create(context: _Context) -> int:
         encoding=context.args.encoding or "utf-8",
         allow_sensitive_write=context.args.allow_sensitive_write,
         dry_run=context.args.dry_run,
+        actor=getattr(context.args, "actor", None),
+        task_id=getattr(context.args, "task_id", None),
     )
     return _emit_mutation(context, result)
 
@@ -498,6 +545,8 @@ def _handle_write(context: _Context) -> int:
         encoding=context.args.encoding,
         allow_sensitive_write=context.args.allow_sensitive_write,
         dry_run=context.args.dry_run,
+        actor=getattr(context.args, "actor", None),
+        task_id=getattr(context.args, "task_id", None),
     )
     return _emit_mutation(context, result)
 
@@ -509,6 +558,8 @@ def _handle_copy(context: _Context) -> int:
         expected_destination_hash=context.args.expected_destination_hash,
         allow_sensitive_write=context.args.allow_sensitive_write,
         dry_run=context.args.dry_run,
+        actor=getattr(context.args, "actor", None),
+        task_id=getattr(context.args, "task_id", None),
     )
     return _emit_mutation(context, result)
 
@@ -520,6 +571,8 @@ def _handle_move(context: _Context) -> int:
         overwrite=context.args.overwrite,
         allow_sensitive_write=context.args.allow_sensitive_write,
         dry_run=context.args.dry_run,
+        actor=getattr(context.args, "actor", None),
+        task_id=getattr(context.args, "task_id", None),
     )
     return _emit_mutation(context, result)
 
@@ -529,20 +582,30 @@ def _handle_delete(context: _Context) -> int:
         context.args.path,
         expected_hash=context.args.expected_hash,
         dry_run=context.args.dry_run,
+        actor=getattr(context.args, "actor", None),
+        task_id=getattr(context.args, "task_id", None),
     )
     return _emit_mutation(context, result)
 
 
 def _handle_dir_create(context: _Context) -> int:
     result = context.service.create_directory(
-        context.args.path, parents=context.args.parents, dry_run=context.args.dry_run
+        context.args.path,
+        parents=context.args.parents,
+        dry_run=context.args.dry_run,
+        actor=getattr(context.args, "actor", None),
+        task_id=getattr(context.args, "task_id", None),
     )
     return _emit_mutation(context, result)
 
 
 def _handle_dir_move(context: _Context) -> int:
     result = context.service.move_directory(
-        context.args.source, context.args.destination, dry_run=context.args.dry_run
+        context.args.source,
+        context.args.destination,
+        dry_run=context.args.dry_run,
+        actor=getattr(context.args, "actor", None),
+        task_id=getattr(context.args, "task_id", None),
     )
     return _emit_mutation(context, result)
 
@@ -553,6 +616,61 @@ def _handle_dir_delete(context: _Context) -> int:
         recursive=context.args.recursive,
         confirm_recursive=context.args.confirm_recursive,
         dry_run=context.args.dry_run,
+        actor=getattr(context.args, "actor", None),
+        task_id=getattr(context.args, "task_id", None),
+    )
+    return _emit_mutation(context, result)
+
+
+def _handle_history_list(context: _Context) -> int:
+    operations = context.service.list_history(
+        path=getattr(context.args, "path", None),
+        actor=getattr(context.args, "actor", None),
+        task_id=getattr(context.args, "task_id", None),
+        limit=context.args.limit,
+    )
+    context.emit(
+        {
+            "ok": True,
+            "operations": output.jsonable(operations),
+            "count": len(operations),
+        },
+        output.history_list(operations),
+    )
+    return exit_codes.SUCCESS
+
+
+def _handle_history_show(context: _Context) -> int:
+    record = context.service.get_operation(context.args.operation_id)
+    context.emit(
+        {"ok": True, "operation": output.jsonable(record)},
+        output.history_show(record),
+    )
+    return exit_codes.SUCCESS
+
+
+def _handle_history_diff(context: _Context) -> int:
+    diff = context.service.diff_operation(context.args.operation_id)
+    context.emit(
+        {"ok": True, "operation_id": diff.operation_id, "files": output.jsonable(diff.items)},
+        output.history_diff(diff),
+    )
+    return exit_codes.SUCCESS
+
+
+def _handle_history_undo(context: _Context) -> int:
+    result = context.service.undo(
+        context.args.operation_id,
+        actor=getattr(context.args, "actor", None),
+        task_id=getattr(context.args, "task_id", None),
+    )
+    return _emit_mutation(context, result)
+
+
+def _handle_history_undo_last(context: _Context) -> int:
+    result = context.service.undo_last(
+        actor=getattr(context.args, "actor", None),
+        task_id=getattr(context.args, "task_id", None),
     )
     return _emit_mutation(context, result)
 

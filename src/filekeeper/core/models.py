@@ -163,13 +163,66 @@ class OperationItemResult:
 
 
 @dataclass(frozen=True, slots=True)
+class OperationItemRecord:
+    """One path recorded against an operation in the durable history."""
+
+    relative_path: str
+    item_type: str
+    before_blob_hash: str | None
+    after_blob_hash: str | None
+    before_exists: bool
+    after_exists: bool
+    before_mode: int | None
+    after_mode: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class OperationRecord:
+    """An operation as stored in the history ledger."""
+
+    id: str
+    workspace_id: str
+    operation_type: str
+    target_path: str | None
+    status: str
+    created_at: str
+    actor: str | None
+    task_id: str | None
+    summary: str | None
+    before_hash: str | None
+    after_hash: str | None
+    items: tuple[OperationItemRecord, ...] = ()
+    history_skipped: tuple[str, ...] = ()
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class DiffEntry:
+    """One path's before/after comparison inside :func:`diff_operation`."""
+
+    path: str
+    item_type: str
+    before_exists: bool
+    after_exists: bool
+    is_binary: bool
+    unified_diff: str
+
+
+@dataclass(frozen=True, slots=True)
+class OperationDiff:
+    operation_id: str
+    items: tuple[DiffEntry, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class MutationResult:
     """The stable shape of every mutating call.
 
-    The history layer will fill ``operation_id`` and ``undo_available`` without
-    changing this shape. Until history lands, ``operation_id`` is ``None`` and
-    ``undo_available`` is ``False``: a mutation is crash-safe on disk, but not
-    yet undoable.
+    ``operation_id`` names the durable history record for the mutation and is
+    ``None`` only for a dry run. ``undo_available`` says whether that record can
+    restore the previous bytes: it is ``False`` when an affected file exceeded
+    the history size cap, because its previous bytes were deliberately not
+    stored.
     """
 
     workspace: str
@@ -184,6 +237,7 @@ class MutationResult:
     warnings: tuple[str, ...] = ()
     items: tuple[OperationItemResult, ...] = ()
     affected_count: int | None = None
+    history_skipped: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = _jsonable(asdict(self))

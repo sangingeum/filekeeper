@@ -27,8 +27,9 @@ def test_create_file_returns_the_history_shaped_result(service) -> None:
     assert result.before_hash is None
     assert result.after_hash is not None
     assert result.after_hash.startswith("sha256:")
-    assert result.operation_id is None
-    assert result.undo_available is False
+    assert result.operation_id is not None
+    assert result.operation_id.startswith("op_")
+    assert result.undo_available is True
     assert result.items[0].change == "created"
     assert (service.root / "todo.md").read_text(encoding="utf-8") == "# Todo\n"
 

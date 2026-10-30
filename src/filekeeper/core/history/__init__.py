@@ -1,10 +1,20 @@
-"""History foundations.
+"""Durable operation history: blob store, journal, read surfaces, and undo."""
 
-Only the content-addressed blob store exists in this release. The operation
-journal, undo and conflict detection arrive in a later release; the database
-schema they will use is already created and migrated.
-"""
+from __future__ import annotations
 
 from .blobs import BlobStore
+from .journal import BeginResult, OperationJournal, PendingItem
+from .repository import diff_operation, get_operation, list_history
+from .undo import undo_last, undo_operation
 
-__all__ = ["BlobStore"]
+__all__ = [
+    "BeginResult",
+    "BlobStore",
+    "OperationJournal",
+    "PendingItem",
+    "diff_operation",
+    "get_operation",
+    "list_history",
+    "undo_last",
+    "undo_operation",
+]

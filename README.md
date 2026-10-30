@@ -10,21 +10,24 @@ results with stable error codes.
 
 ## Status
 
-Version 0.1 is the **foundation and basic operations** release. It includes
-workspace registration and confinement, read/info/hash/list/search, file and
-directory create/copy/move/delete, atomic whole-file replacement, text detection
-and size limits, the CLI, and the SQLite schema that the history layer will use.
+Version 0.1 is the **foundation, operations and reversibility** release. It
+includes workspace registration and confinement, read/info/hash/list/search,
+file and directory create/copy/move/delete, atomic whole-file replacement, text
+detection and size limits, durable operation history with content-addressed
+blobs, safe undo with conflict detection, and the CLI.
 
 Not in this release, and deliberately so:
 
-- operation history recording, undo, redo, snapshots
+- redo (undo is the requirement; redo is convenience) — an undone operation is
+  recorded, but `redo` itself is not implemented
+- explicit snapshots and restore (history blobs already hold the data)
 - exact-text and line-range editing (`replace_text`, `replace_lines`,
   `insert_lines`, `delete_lines`, `apply_patch`) — the API is a published stub that
   raises rather than doing nothing
 - unified-diff application
 - advisory locks with TTL (the tables exist; the API does not)
 - the MCP server (`filekeeper-mcp` is a reserved, separate distribution)
-- file watching, archives, HTTP transport, pruning UI
+- batch execution, file watching, archives, history pruning UI, HTTP transport
 
 ## Install
 
@@ -56,10 +59,9 @@ never guesses when several workspaces exist.
 ## Where state lives
 
 **Project-local by default.** A workspace's own state — the operation journal and
-content-addressed blobs that arrive with the history release — lives in
-`<workspace>/.filekeeper/`, created on the first mutation that needs it. It
-travels with the checkout, so a fresh clone does not silently lose undo history,
-and deleting a project takes its blobs with it.
+content-addressed blobs — lives in `<workspace>/.filekeeper/`, created on the
+first mutation that needs it. It travels with the checkout, so a fresh clone does
+not silently lose undo history, and deleting a project takes its blobs with it.
 
 Workspace *registrations* live in the Filekeeper home directory
 (`~/.local/share/filekeeper` on Linux, or `FILEKEEPER_HOME`), because a registry
@@ -81,14 +83,21 @@ nothing.
   the destination. If the process dies or the disk fills before the rename, the
   file still holds its complete previous content. Never a truncated file, never a
   half-written mix.
-- **Multiple files are not atomic.** Copy, move and recursive directory deletion
-  affect more than one path as a sequence of individually safe steps. A crash
-  between steps leaves some paths changed and others not. This release has no undo,
-  so multi-path operations are *not* recoverable either; the history release will
-  make them recoverable, but still not atomic. Do not treat a batch of changes as
-  all-or-nothing.
-- **Deletion is final in this release.** Recursive directory deletion therefore
-  requires both `--recursive` and `--confirm-recursive`.
+- **Multiple files are recoverable, not atomic.** Copy, move and recursive
+  directory deletion affect more than one path as a sequence of individually safe
+  steps. A crash between steps leaves some paths changed and others not. History
+  makes the whole operation recoverable: a crash leaves a *pending* record, the
+  next run resolves it honestly, and `keeper history undo` can put the previous
+  bytes back. It is still not all-or-nothing, and you should not treat a batch of
+  changes as a transaction.
+- **The order is fixed.** Before anything is touched, the previous and new
+  contents are written and fsynced as immutable blobs, then a pending operation
+  record is committed with SQLite in full-synchronous mode. Only then is the file
+  replaced, verified, and the operation marked committed.
+- **History has a size cap.** A file above `max_history_blob_bytes` (4 MiB by
+  default) is still recorded, but its bytes are not stored: the result says
+  history was skipped for it and `undo_available` is false. One large edit cannot
+  silently fill the store.
 
 ## Line numbers
 
@@ -118,10 +127,52 @@ keeper file delete PATH [--expected-hash HASH] [--dry-run]
 keeper dir create PATH [--parents] [--dry-run]
 keeper dir move SOURCE DESTINATION [--dry-run]
 keeper dir delete PATH [--recursive --confirm-recursive] [--dry-run]
+keeper history list [--path PATH] [--actor NAME] [--task-id ID] [--limit N]
+keeper history show OPERATION_ID
+keeper history diff OPERATION_ID
+keeper history undo OPERATION_ID
+keeper history undo-last [--actor NAME]
 ```
 
 Global options: `--workspace NAME`, `--root PATH`, `--json`, `--quiet`,
-`--verbose`, `--home PATH`.
+`--verbose`, `--home PATH`, `--actor NAME`, `--task-id ID`.
+
+`--actor` and `--task-id` are recorded with a mutation and act as filters for
+`history list`; they are optional and carry no host-specific meaning.
+
+## History and undo
+
+Every mutation is recorded as an operation with its affected paths, before and
+after content hashes, file modes, existence on both sides, a timestamp, and the
+optional `actor` / `task_id`. Blob content is content-addressed, so identical
+content is stored once.
+
+```bash
+keeper history list                    # newest first, this workspace only
+keeper history show op_1a2b3c4d        # operation, status and per-path hashes
+keeper history diff op_1a2b3c4d        # unified diff, never the whole file body
+keeper history undo op_1a2b3c4d        # restore the state before that operation
+keeper history undo-last               # the most recent undoable operation here
+```
+
+Undo is safe, not best-effort. Before changing anything it compares every
+affected path with the state the operation recorded:
+
+- if the path still matches the recorded **after** state, undo restores the
+  recorded **before** bytes;
+- if it already matches the **before** state (a partially applied multi-file
+  operation), undo leaves it alone;
+- if it matches neither, someone changed it afterwards: the undo is refused with
+  `UNDO_CONFLICT` (exit code 12) and **nothing is modified**.
+
+Undoing a create removes the file only while it still matches what was created.
+Undoing a delete restores the file only while the destination is still absent.
+Undoing a move checks both ends. A directory operation validates every path in
+the tree first. `undo-last` only ever looks at the selected workspace.
+
+The undo is itself recorded as an operation, so `history list` remains a
+truthful ledger. **Redo is deferred** — it is not half-implemented; undoing an
+undo is the supported way to go forward again.
 
 `keeper file read` writes file content to standard output unchanged (line endings
 included). Metadata goes to stderr, or into the JSON object with `--json`.
@@ -143,8 +194,8 @@ fields:
   "before_hash": "sha256:...",
   "after_hash": "sha256:...",
   "summary": "Wrote todo.md.",
-  "operation_id": null,
-  "undo_available": false,
+  "operation_id": "op_1a2b3c4d5e6f7a8b",
+  "undo_available": true,
   "dry_run": false,
   "warnings": [],
   "items": [{"path": "todo.md", "change": "modified", "before_hash": "sha256:...", "after_hash": "sha256:..."}]
@@ -165,9 +216,10 @@ Failure carries a structured error and no traceback:
 }
 ```
 
-`operation_id` is `null` and `undo_available` is `false` in this release: the field
-shape is already the one the history layer will fill. A mutation is crash-safe on
-disk, but it is not yet undoable.
+`operation_id` is `null` only for a dry run (nothing was recorded).
+`undo_available` is `false` when an affected file was above the history size cap,
+so its previous bytes were deliberately not stored; `history_skipped` then names
+the paths.
 
 ## Exit codes
 
@@ -185,6 +237,8 @@ disk, but it is not yet undoable.
 | 9 | storage or database error |
 | 10 | write refused: the target looks like credential material |
 | 11 | symlink target resolves outside the workspace |
+| 12 | undo refused: a path changed after the operation |
+| 13 | history needed for restore is missing, corrupt or was skipped |
 
 `keeper file exists` exits 3 when the path does not exist, which makes it usable as
 a shell predicate.
@@ -198,6 +252,7 @@ a shell predicate.
 `CONTENT_CONFLICT`, `BINARY_CONTENT_REFUSED`, `LIMIT_EXCEEDED`,
 `INVALID_PATTERN`, `WORKSPACE_NOT_FOUND`, `WORKSPACE_EXISTS`,
 `NO_WORKSPACE_SELECTED`, `STORAGE_ERROR`, `MIGRATION_ERROR`,
+`OPERATION_NOT_FOUND`, `UNDO_CONFLICT`, `HISTORY_UNAVAILABLE`,
 `NOT_IMPLEMENTED_YET`, `INTERNAL_ERROR`.
 
 Codes are stable; messages are not a contract.
@@ -253,6 +308,16 @@ service.write_file("todo.md", "# Todo\n", expected_hash=read.content_hash)
 
 Mutating methods return `MutationResult` with `operation_id`, `before_hash`,
 `after_hash`, `undo_available`, `summary`, `warnings` and per-path `items`.
+
+The same history is available from Python:
+
+```python
+record = service.get_operation(operation_id)
+recent = service.list_history(path="todo.md", actor="editor", limit=10)
+diff = service.diff_operation(operation_id)
+service.undo(operation_id, actor="editor")
+service.undo_last(actor="editor")
+```
 
 Core imports only the Python standard library. `packages/filekeeper-mcp/` is a
 separate, currently unimplemented distribution so that installing the CLI never

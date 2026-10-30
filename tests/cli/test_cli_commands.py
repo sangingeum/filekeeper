@@ -264,12 +264,14 @@ def test_non_empty_directory_advice_names_the_cli_flags(run_cli, workspace_root:
     assert "recursive=True" not in err
 
 
-def test_recursive_delete_warning_says_deletion_cannot_be_undone(
+def test_recursive_delete_warning_states_recoverable_but_not_atomic(
     run_cli, workspace_root: Path
 ) -> None:
     run_cli("workspace", "create", "project", str(workspace_root))
 
     code, out, _ = run_cli("dir", "delete", "sub", "--recursive", "--confirm-recursive")
     assert code == exit_codes.SUCCESS
-    assert "cannot be undone in this release" in out
+    assert "recoverable through history" in out
+    assert "never atomic across the tree" in out
+    assert "operation_id: op_" in out
     assert "recoverable only once history lands" not in out

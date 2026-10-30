@@ -40,6 +40,24 @@ All notable changes to this project are recorded here. The format follows
   codes.
 - `MutationResult` already carries `operation_id` and `undo_available` so the
   history layer can fill them without changing the public API shape.
+- Durable operation history: every mutation records an operation and its
+  affected items with relative paths, before/after blob hashes, existence and
+  modes on both sides, timestamp, status, optional `actor` and `task_id`, and a
+  summary. Mutations return a real `operation_id`.
+- Content-addressed blobs are staged for every affected file, deduplicated by
+  hash, verified on read, and capped by `max_history_blob_bytes`; oversize files
+  are recorded with history skipped and reported in the result.
+- Durability sequence: fsynced blobs, then a pending record on a
+  full-synchronous SQLite connection, then the atomic replace, then hash
+  verification, then the committed mark. Startup reconciliation resolves pending
+  operations against the recorded before/after states without discarding blobs.
+- Safe undo: `undo` and `undo_last` validate every affected path before changing
+  anything, refuse later changes with `UNDO_CONFLICT` (exit 12), and record the
+  undo itself as an operation. Missing or corrupt blobs raise
+  `HISTORY_UNAVAILABLE` (exit 13).
+- History surfaces: `get_operation`, `list_history` (path, actor, task-id and
+  limit filters), `diff_operation`, and `keeper history list|show|diff|undo|
+  undo-last`, all with `--json`.
 - Published stub module for exact-text and line-range editing that raises rather
   than silently doing nothing.
 
@@ -54,12 +72,15 @@ All notable changes to this project are recorded here. The format follows
   caller's path, never the resolved host path or the temporary name.
 - The non-empty-directory refusal now points at the real CLI flags
   (`--recursive --confirm-recursive`) instead of the Core keyword.
-- The recursive-delete warning states plainly that the deletion cannot be
-  undone in this release.
+- The recursive-delete warning states plainly that the deletion is recoverable
+  through history but never atomic across the tree.
+- `keeper workspace create` now describes the state directory as it actually
+  behaves: created on the first mutation, with a `.gitignore` entry added when
+  the workspace is a git repository.
 
 ### Notes
 
-- Operation history, undo, redo, snapshots, locks, patch application and the MCP
-  server are not part of this release.
-- Multi-file operations are recoverable only once history lands, and are never
-  atomic across files; single-file writes are atomic now.
+- Redo, snapshots, locks, patch application, batch execution and the MCP server
+  are not part of this release.
+- Multi-file operations are recoverable through history, and are never atomic
+  across files; single-file writes are atomic.

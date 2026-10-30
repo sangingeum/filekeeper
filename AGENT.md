@@ -23,7 +23,7 @@ src/filekeeper/
     service.py              Filekeeper (home) and FilekeeperService (workspace)
     operations/             read, write, directory, search, edit (stub)
     safety/                 atomic write, hashing, text rules, refusals, VCS warning
-    history/                blob store (journal lands here later)
+    history/                blob store, operation journal, undo, read surfaces
   cli/                      argparse adapter: app, output, exit_codes
 packages/filekeeper-mcp/    reserved separate distribution (no server yet)
 tests/                      unit/, integration/, cli/, helpers/

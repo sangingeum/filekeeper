@@ -37,6 +37,7 @@ class Config:
     max_directory_entries: int = 2000
     max_recursion_depth: int = 25
     max_line_length: int = 2000
+    max_history_blob_bytes: int = 4 * 1024 * 1024
     fsync: bool = True
     state_location: str = "project"
 
@@ -114,6 +115,11 @@ max_search_results = 500
 max_directory_entries = 2000
 max_recursion_depth = 25
 max_line_length = 2000
+
+# Files above this size are skipped by history: the mutation is still recorded,
+# but its previous bytes are not stored, so it cannot be undone. This keeps one
+# large edit from silently filling the blob store.
+max_history_blob_bytes = 4194304
 
 # Durability of atomic writes: flush and fsync the temporary file and the
 # parent directory before reporting success.

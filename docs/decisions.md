@@ -175,3 +175,75 @@ outside is `SYMLINK_ESCAPE_REFUSED` (exit 11). `SYMLINK_WRITE_REFUSED` stays
 separate, because writing to a link is a different act from following one out of
 the workspace. Every case is still a refusal: no input that was rejected before
 is accepted now.
+
+## Undo conflict has its own exit code because the specification's number was taken
+
+The specification's suggested table assigned 6 to an undo/redo conflict, but the
+existing contract already uses 6 for an absolute path that resolves outside the
+workspace. Renumbering a documented code would break every script that branches
+on it, so undo conflict takes the next free number, 12, and unusable history
+takes 13. `UNDO_CONFLICT` and `HISTORY_UNAVAILABLE` are the corresponding stable
+error codes.
+
+## Undo accepts either recorded state, not only the post-operation state
+
+The specification says to compare the current path with the recorded post-state
+and restore the pre-state on a match. Taken alone, that makes a multi-file
+operation that failed part-way impossible to undo: some paths are already at
+their pre-state, so they would look like conflicts. The rule here is: a path may
+match either the recorded pre-state or the recorded post-state. Matching
+post-state means "restore it"; matching pre-state means "already there, leave
+it". Matching neither means someone else changed it, and the whole undo is
+refused before any byte is written. This keeps the safety property while letting
+a partial batch be repaired.
+
+## A directory is only removed when the whole undo owns it
+
+Undoing a directory create must not delete files added afterwards. A directory
+is therefore removable only when every entry inside it is also being removed by
+the same undo (which is true for a recorded directory move or delete, and false
+for a directory that gained new content). The check runs during validation, in
+the same pass that detects hash conflicts, so a refusal changes nothing.
+
+## Undo restores by rewriting content, not by renaming back
+
+A file move could be undone with a rename, but undo writes the recorded previous
+bytes through the atomic-write path and then removes the destination. That
+verifies the blob hash on read, works for a copy as well as a move, and leaves a
+single well-tested code path. The cost is an extra write inside the same
+directory, which is cheap compared with the risk of a restore that trusts a path
+instead of content.
+
+## History size cap defaults to 4 MiB per file
+
+The review requires a configurable cap so one large edit cannot consume the
+store. Four mebibytes is above nearly every source file and well below the 20 MiB
+write limit, so ordinary editing keeps full undo while a generated artefact or
+large log does not. A skipped file is still recorded with its hashes; the result
+names it in `history_skipped`, sets `undo_available` to false, and undo raises
+`HISTORY_UNAVAILABLE` rather than pretending.
+
+## A transient workspace records under the identifier `local`
+
+`--root` for an unregistered directory creates no registration, so there is no
+workspace id to store. Each such root has its own state database, so the literal
+identifier `local` cannot collide across roots, and history still works for
+one-off work. This does not widen any allowed root: the root is still the one the
+caller named explicitly.
+
+## Reconciliation reports three honest outcomes, not two
+
+A pending operation is resolved as `committed` when every item matches its
+post-state, `failed` when every item matches its pre-state, and `failed` with
+`metadata.reconciled = "failed"` plus `metadata.unresolved` when the states are
+mixed. The last case is a partial application: the schema's `partially_undone`
+value describes an undo, not an interrupted mutation, so it is not reused here.
+Blobs are never deleted during reconciliation, so even a failed record keeps the
+previous bytes available for a later undo.
+
+## A diff shows a move as a removal and an addition
+
+`diff_operation` groups items by path; a move is recorded as the source path
+losing its content and the destination gaining it. Rendering that as two hunks
+is truthful and needs no move-detection heuristic. Binary items are reported as
+binary with no textual diff rather than decoded speculatively.
