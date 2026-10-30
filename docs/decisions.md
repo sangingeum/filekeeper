@@ -445,3 +445,20 @@ a packaging constraint. The MCP distribution keeps its own name,
 `filekeeper-mcp`, and depends on `filekeeper-cli`. It is registered and
 published only after `filekeeper-cli` exists on PyPI, because PyPI accepts one
 pending project at a time.
+
+## The two distributions ride separate tag trains
+
+`filekeeper-cli` and `filekeeper-mcp` version independently, and PyPI never lets
+a version number be reused for a project. So the release workflow has two tag
+trains: `v*` publishes `filekeeper-cli` and `mcp-v*` publishes `filekeeper-mcp`.
+The patterns cannot overlap — `v*` is anchored at the first character, so
+`mcp-v0.1.0` does not match it — and each publish job is additionally gated on
+its own tag prefix, so a single tag can never upload both distributions.
+
+One tag that uploaded twice would be a trap: a partial failure would leave two
+version numbers burned with only one artefact on PyPI, and neither half could be
+published again under the same version. Two trains keep each project's history
+independent: the MCP server can ship a protocol fix without moving the Core
+version, and the Core can release without republishing an unchanged server. The
+manual workflow trigger builds and inspects both artefact sets and uploads
+neither, because a manual run carries no tag to prove which version is intended.

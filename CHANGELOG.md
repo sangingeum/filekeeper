@@ -102,6 +102,12 @@ All notable changes to this project are recorded here. The format follows
 
 ### Changed
 
+- `filekeeper-mcp` has its own release train. A `v*` tag publishes
+  `filekeeper-cli` and an `mcp-v*` tag publishes `filekeeper-mcp`; one tag never
+  uploads both distributions, so a version number is burned for exactly one
+  project at a time. A manual workflow run only builds and inspects.
+- Python 3.12 is the supported interpreter: both distributions declare
+  `requires-python = ">=3.12,<3.13"` and carry only the 3.12 classifier.
 - Operation identity is `operation_id` on every surface. `history list` and
   `history show` items use the same key as mutations, diff and undo; there is no
   legacy `id` alias.
