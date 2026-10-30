@@ -247,3 +247,73 @@ previous bytes available for a later undo.
 losing its content and the destination gaining it. Rendering that as two hunks
 is truthful and needs no move-detection heuristic. Binary items are reported as
 binary with no textual diff rather than decoded speculatively.
+
+## Exact-text replacement is the primary edit, line ranges are secondary
+
+The specification made line-range replacement the essential coding-agent edit.
+Measured use says otherwise: exact-text replacement does not need a prior read to
+discover line numbers, so it costs one fewer round trip per edit. `replace_text`
+is therefore the primary surface, and `replace_lines`, `insert_lines` and
+`delete_lines` stay for genuinely positional work. All four share the same
+journal, guard and undo path.
+
+## Replacement matching is staged, and the stage is part of the result
+
+A strict literal-only match would reject edits that differ only in indentation,
+which is a common and harmless drift; a silently tolerant match would hide the
+fact that the edit landed somewhere else. The stages are therefore explicit and
+ordered: `exact`, then a whitespace-normalised match reported as `normalised`,
+then a `NO_MATCH` refusal with the nearest candidate lines. A normalised match is
+never applied without that word in the result. In the normalised stage the
+replacement is re-based onto the indentation of the line it replaces, keeping the
+caller's relative indentation inside a multi-line block.
+
+A caller must choose `first` or `all`: there is no default policy that could
+quietly change more or less than intended. `match_count` reports the number of
+matches found before the policy is applied; `expected_match_count` turns a
+different number into a refusal rather than a surprise.
+
+`expected_content` guards one target region and must equal its exact text,
+including the file's indentation. With `all` and more than one matched region it
+is refused as ambiguous, because one expected value cannot describe several
+regions.
+
+## Line-range edits preserve the file's shape, not the caller's sloppiness
+
+Ranges are 1-based and inclusive and are rejected when out of range; clamping
+would silently edit the wrong lines. End-of-file insertion is the explicit
+`position="end"` and is never encoded as a sentinel line number. The file's
+dominant newline and byte-order mark are preserved, and replacement lines are
+written in that convention. If the caller's replacement omits a trailing
+newline, the termination of the line it replaces is kept, so a line edit cannot
+accidentally join two lines or strip a file's final newline.
+
+## A patch is validated completely, then applied recoverably
+
+Every hunk is parsed, every path resolved, and every preimage checked against
+the file in memory before a byte is written. A failed hunk rejects the whole
+patch; an ambiguous hunk (its preimage occurs more than once and the stated line
+does not disambiguate it) is rejected rather than guessed. This makes the common
+failure cases harmless.
+
+The remaining failure mode is a write that fails part-way through several files.
+That cannot be made atomic across paths, so it is made recoverable: all affected
+files are recorded as one logical operation, and a failure after earlier writes
+restores those files to their pre-patch bytes in reverse order before reporting
+the failure. If restoration itself fails, the error says which paths were
+restored and which were not instead of claiming success. Undo of a multi-file
+patch validates every path first and restores every file as one operation.
+
+A patch that creates or deletes a file is expressed with `/dev/null` on the
+relevant side, as unified diff does. Renaming patches are refused: the diff
+format carries no content-based move semantics that could be verified safely.
+
+## Diff rendering states a missing final newline instead of gluing lines
+
+`difflib.unified_diff` returns each content line exactly as it was supplied. A
+final line without a newline therefore had no terminator and ran into the next
+rendered line, producing output that no patch consumer could read. The renderer
+now normalises every content line to end with a newline and, when a side has no
+final newline, emits the standard `\ No newline at end of file` marker after the
+line that represents that final line. The human view, the JSON payload and the
+dry-run preview all use this one renderer, so they cannot disagree.

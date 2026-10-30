@@ -58,8 +58,25 @@ All notable changes to this project are recorded here. The format follows
 - History surfaces: `get_operation`, `list_history` (path, actor, task-id and
   limit filters), `diff_operation`, and `keeper history list|show|diff|undo|
   undo-last`, all with `--json`.
-- Published stub module for exact-text and line-range editing that raises rather
-  than silently doing nothing.
+- `replace_text`, the primary edit: literal-only replacement with an explicit
+  `first` / `all` policy, a returned match count, an optional expected count,
+  whole-file hash and target-region content guards, and a dry-run diff preview.
+- Staged matching that names the stage in every result: `exact`, then
+  whitespace-normalised (`normalised`, with the replacement taking the
+  indentation of the line it replaces), then a `NO_MATCH` refusal with the
+  nearest candidate line numbers and text.
+- Line-range editing: `replace_lines`, `insert_lines` and `delete_lines`, with
+  1-based inclusive ranges, out-of-range rejection, explicit end-of-file
+  insertion, newline-convention and BOM preservation, and the same guards and
+  dry run.
+- `apply_patch` for unified diffs: syntax and preimage validation before any
+  write, failed and ambiguous hunks rejected, per-file and per-hunk results,
+  one logical operation for a multi-file patch, and honest rollback to the
+  pre-patch state when a later file fails. Multi-file application is
+  recoverable through history, never atomic across files.
+- CLI commands `file replace-text`, `file replace-lines`, `file insert-lines`,
+  `file delete-lines` and `file apply-patch`, each with `--dry-run` and `--json`,
+  printing the `operation_id` and, for replacement, the matching stage.
 
 ### Fixed
 
@@ -77,10 +94,15 @@ All notable changes to this project are recorded here. The format follows
 - `keeper workspace create` now describes the state directory as it actually
   behaves: created on the first mutation, with a `.gitignore` entry added when
   the workspace is a git repository.
+- `keeper history diff` no longer concatenates two content lines when a file has
+  no trailing newline. Every rendered line, including the last, ends with a
+  newline, and a missing final newline is stated with the conventional
+  `\ No newline at end of file` marker. The human and JSON views come from the
+  same string.
 
 ### Notes
 
-- Redo, snapshots, locks, patch application, batch execution and the MCP server
-  are not part of this release.
+- Redo, snapshots, locks, batch execution and the MCP server are not part of
+  this release.
 - Multi-file operations are recoverable through history, and are never atomic
   across files; single-file writes are atomic.

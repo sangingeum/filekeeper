@@ -14,17 +14,14 @@ Version 0.1 is the **foundation, operations and reversibility** release. It
 includes workspace registration and confinement, read/info/hash/list/search,
 file and directory create/copy/move/delete, atomic whole-file replacement, text
 detection and size limits, durable operation history with content-addressed
-blobs, safe undo with conflict detection, and the CLI.
+blobs, safe undo with conflict detection, staged literal text editing,
+line-range editing, unified-diff application, and the CLI.
 
 Not in this release, and deliberately so:
 
 - redo (undo is the requirement; redo is convenience) — an undone operation is
   recorded, but `redo` itself is not implemented
 - explicit snapshots and restore (history blobs already hold the data)
-- exact-text and line-range editing (`replace_text`, `replace_lines`,
-  `insert_lines`, `delete_lines`, `apply_patch`) — the API is a published stub that
-  raises rather than doing nothing
-- unified-diff application
 - advisory locks with TTL (the tables exist; the API does not)
 - the MCP server (`filekeeper-mcp` is a reserved, separate distribution)
 - batch execution, file watching, archives, history pruning UI, HTTP transport
@@ -105,6 +102,61 @@ Line numbers are **1-based and inclusive** everywhere: Core, CLI, JSON output, a
 tests. `--from-line 10 --to-line 20` returns lines 10 through 20, both included.
 Ranges beyond the end of the file are rejected rather than silently clamped.
 
+## Editing
+
+Every edit goes through the same journal sequence as a whole-file write: blobs,
+pending record, atomic replacement, commit. Each application therefore returns a
+real `operation_id` and is undoable with `keeper history undo`.
+
+### Literal text replacement
+
+`keeper file replace-text PATH --old TEXT --new TEXT (--first | --all)`
+
+This is the primary edit. Matching is staged, and the result always names the
+stage that matched:
+
+1. `exact` — the literal text appears exactly as given;
+2. `normalised` — indentation and trailing whitespace are tolerated, and the
+   replacement takes the indentation of the line it replaces. A stage-2 match is
+   never applied silently;
+3. `none` — no match: the command fails with `NO_MATCH` and the nearest line
+   numbers and their text.
+
+The policy is explicit: `--first` or `--all`. `match_count` reports how many
+matches were found. `--expected-match-count N` refuses a different count, and
+`--expected-content TEXT` guards the exact text of a single target region.
+`--expected-hash` guards the whole file. `--dry-run` prints a unified diff and
+writes nothing. Replacement is always literal: the search and replacement text
+are never interpreted as a regular expression or a regex template.
+
+### Line ranges
+
+```
+keeper file replace-lines PATH --start N --end M --replacement TEXT
+keeper file insert-lines PATH --position before|after|end [--line N] --content TEXT
+keeper file delete-lines PATH --start N --end M
+```
+
+Line numbers are 1-based and inclusive. Out-of-range references are rejected,
+never clamped. End-of-file insertion is the explicit `--position end`; it never
+overloads a line number. The file's newline convention and byte-order mark are
+preserved, and the same hash/content guards and dry-run apply.
+
+### Unified diffs
+
+`keeper file apply-patch [PATCH]` reads a patch file, or patch text from standard
+input. The whole patch is parsed and every hunk is checked against its file
+before anything is written. A failed or ambiguous hunk rejects the patch; no
+partial patch is applied silently. `--dry-run` validates and reports every file
+and hunk without touching the tree. The result carries per-file and per-hunk
+status, and `--json` carries the same data.
+
+A multi-file patch is recorded as **one logical operation**, and undo restores
+every file. Application itself is **recoverable, not atomic across files**: if a
+later file fails after earlier ones were written, the written files are rolled
+back to their pre-patch bytes and the failure names what was restored. A crash is
+resolved from the pending journal record, never from an all-or-nothing commit.
+
 ## Commands
 
 ```
@@ -124,6 +176,11 @@ keeper file write PATH (--content TEXT | --input FILE | stdin) [--expected-hash 
 keeper file copy SOURCE DESTINATION [--expected-destination-hash HASH] [--dry-run]
 keeper file move SOURCE DESTINATION [--overwrite] [--dry-run]
 keeper file delete PATH [--expected-hash HASH] [--dry-run]
+keeper file replace-text PATH --old TEXT --new TEXT (--first | --all) [guards] [--dry-run]
+keeper file replace-lines PATH --start N --end M --replacement TEXT [guards] [--dry-run]
+keeper file insert-lines PATH --position before|after|end [--line N] --content TEXT [guards] [--dry-run]
+keeper file delete-lines PATH --start N --end M [guards] [--dry-run]
+keeper file apply-patch [PATCH] [--dry-run]
 keeper dir create PATH [--parents] [--dry-run]
 keeper dir move SOURCE DESTINATION [--dry-run]
 keeper dir delete PATH [--recursive --confirm-recursive] [--dry-run]
@@ -221,6 +278,10 @@ Failure carries a structured error and no traceback:
 so its previous bytes were deliberately not stored; `history_skipped` then names
 the paths.
 
+Editing results add `match_stage` and `match_count` (text replacement),
+`preview_diff` (dry run), and, for patches, `patch_files` with per-hunk status.
+A failure that was rolled back reports the restored paths in the error details.
+
 ## Exit codes
 
 | Code | Meaning |
@@ -232,8 +293,8 @@ the paths.
 | 4 | permission or workspace-boundary violation |
 | 5 | concurrency conflict (stale expected hash) |
 | 6 | absolute path resolves outside the workspace |
-| 7 | patch could not be applied (reserved) |
-| 8 | partial rollback or recovery (reserved) |
+| 7 | patch could not be applied; the pre-patch state is intact |
+| 8 | a failed patch could not be fully rolled back |
 | 9 | storage or database error |
 | 10 | write refused: the target looks like credential material |
 | 11 | symlink target resolves outside the workspace |
@@ -249,7 +310,8 @@ a shell predicate.
 `PATH_OUTSIDE_WORKSPACE`, `ABSOLUTE_PATH_OUTSIDE_WORKSPACE`,
 `SYMLINK_ESCAPE_REFUSED`, `PATH_IS_STATE_PATH`, `SYMLINK_WRITE_REFUSED`,
 `SPECIAL_FILE_REFUSED`, `SENSITIVE_PATH_REFUSED`, `ALREADY_EXISTS`,
-`CONTENT_CONFLICT`, `BINARY_CONTENT_REFUSED`, `LIMIT_EXCEEDED`,
+`CONTENT_CONFLICT`, `NO_MATCH`, `MATCH_COUNT_MISMATCH`, `PATCH_FAILED`,
+`PARTIAL_RECOVERY`, `BINARY_CONTENT_REFUSED`, `LIMIT_EXCEEDED`,
 `INVALID_PATTERN`, `WORKSPACE_NOT_FOUND`, `WORKSPACE_EXISTS`,
 `NO_WORKSPACE_SELECTED`, `STORAGE_ERROR`, `MIGRATION_ERROR`,
 `OPERATION_NOT_FOUND`, `UNDO_CONFLICT`, `HISTORY_UNAVAILABLE`,
@@ -285,7 +347,9 @@ A file is treated as binary when its first 8 KiB contains a NUL byte. Text
 operations refuse binary content and undecodable bytes instead of returning
 mojibake; `--encoding` names an encoding explicitly. A UTF-8 byte-order mark is
 preserved across rewrites, and line endings are **never** normalised — the detected
-convention is reported, not applied.
+convention is reported, not applied. Line-range edits and patch hunks write
+caller content using the file's existing convention, so editing a CRLF file does
+not silently convert it to LF.
 
 Reads and writes are bounded (5 MiB and 20 MiB by default), as are search results,
 directory entries and recursion depth. Bounded reads report `truncated`,
@@ -308,6 +372,8 @@ service.write_file("todo.md", "# Todo\n", expected_hash=read.content_hash)
 
 Mutating methods return `MutationResult` with `operation_id`, `before_hash`,
 `after_hash`, `undo_available`, `summary`, `warnings` and per-path `items`.
+Editing methods add `match_stage`, `match_count`, `preview_diff` and
+`patch_files`.
 
 The same history is available from Python:
 

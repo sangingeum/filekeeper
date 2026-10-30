@@ -20,6 +20,13 @@ from typing import Final
 from ..errors import BinaryContentRefusedError, ValidationError
 
 BINARY_SAMPLE_SIZE: Final = 8192
+_BOM_BYTES: Final[dict[str, bytes]] = {
+    "utf-8": codecs.BOM_UTF8,
+    "utf-16-le": codecs.BOM_UTF16_LE,
+    "utf-16-be": codecs.BOM_UTF16_BE,
+    "utf-32-le": codecs.BOM_UTF32_LE,
+    "utf-32-be": codecs.BOM_UTF32_BE,
+}
 _BOMS: Final[tuple[tuple[bytes, str], ...]] = (
     (codecs.BOM_UTF8, "utf-8"),
     (codecs.BOM_UTF16_LE, "utf-16-le"),
@@ -128,6 +135,8 @@ def encode_text(text: str, *, encoding: str, has_bom: bool) -> bytes:
             f"content cannot be encoded as {encoding}: {exc}",
             details={"encoding": encoding},
         ) from exc
-    if has_bom and encoding == "utf-8":
-        return codecs.BOM_UTF8 + payload
+    if has_bom:
+        bom = _BOM_BYTES.get(encoding)
+        if bom is not None:
+            return bom + payload
     return payload

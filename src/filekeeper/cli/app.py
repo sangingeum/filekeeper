@@ -241,6 +241,79 @@ def build_parser() -> argparse.ArgumentParser:
     delete.add_argument("--dry-run", action="store_true")
     delete.set_defaults(handler=_handle_delete)
 
+    replace_text_parser = file_sub.add_parser(
+        "replace-text",
+        parents=[common],
+        help="replace literal text, reporting the matching stage",
+    )
+    replace_text_parser.add_argument("path")
+    replace_text_parser.add_argument("--old", required=True, metavar="TEXT")
+    replace_text_parser.add_argument("--new", required=True, metavar="TEXT")
+    policy = replace_text_parser.add_mutually_exclusive_group(required=True)
+    policy.add_argument("--first", action="store_const", const="first", dest="match")
+    policy.add_argument("--all", action="store_const", const="all", dest="match")
+    replace_text_parser.add_argument("--expected-hash", metavar="HASH")
+    replace_text_parser.add_argument("--expected-content", metavar="TEXT")
+    replace_text_parser.add_argument("--expected-match-count", type=int, metavar="N")
+    replace_text_parser.add_argument("--dry-run", action="store_true")
+    replace_text_parser.add_argument(
+        "--i-accept-secret-write-risk",
+        action="store_true",
+        dest="allow_sensitive_write",
+    )
+    replace_text_parser.set_defaults(handler=_handle_replace_text)
+
+    replace_lines_parser = file_sub.add_parser(
+        "replace-lines", parents=[common], help="replace an inclusive 1-based line range"
+    )
+    replace_lines_parser.add_argument("path")
+    replace_lines_parser.add_argument("--start", type=int, required=True, dest="start_line")
+    replace_lines_parser.add_argument("--end", type=int, required=True, dest="end_line")
+    replace_lines_parser.add_argument("--replacement", required=True, metavar="TEXT")
+    replace_lines_parser.add_argument("--expected-content", metavar="TEXT")
+    replace_lines_parser.add_argument("--expected-hash", metavar="HASH")
+    replace_lines_parser.add_argument("--dry-run", action="store_true")
+    replace_lines_parser.set_defaults(handler=_handle_replace_lines)
+
+    insert_lines_parser = file_sub.add_parser(
+        "insert-lines", parents=[common], help="insert lines before, after or at the end"
+    )
+    insert_lines_parser.add_argument("path")
+    insert_lines_parser.add_argument("--line", type=int, metavar="N")
+    insert_lines_parser.add_argument(
+        "--position", choices=["before", "after", "end"], required=True
+    )
+    insert_lines_parser.add_argument("--content", required=True, metavar="TEXT")
+    insert_lines_parser.add_argument("--expected-content", metavar="TEXT")
+    insert_lines_parser.add_argument("--expected-hash", metavar="HASH")
+    insert_lines_parser.add_argument("--dry-run", action="store_true")
+    insert_lines_parser.set_defaults(handler=_handle_insert_lines)
+
+    delete_lines_parser = file_sub.add_parser(
+        "delete-lines", parents=[common], help="delete an inclusive 1-based line range"
+    )
+    delete_lines_parser.add_argument("path")
+    delete_lines_parser.add_argument("--start", type=int, required=True, dest="start_line")
+    delete_lines_parser.add_argument("--end", type=int, required=True, dest="end_line")
+    delete_lines_parser.add_argument("--expected-content", metavar="TEXT")
+    delete_lines_parser.add_argument("--expected-hash", metavar="HASH")
+    delete_lines_parser.add_argument("--dry-run", action="store_true")
+    delete_lines_parser.set_defaults(handler=_handle_delete_lines)
+
+    apply_patch_parser = file_sub.add_parser(
+        "apply-patch",
+        parents=[common],
+        help="apply a unified diff, recoverably across files",
+    )
+    apply_patch_parser.add_argument("patch_file", nargs="?", metavar="PATCH")
+    apply_patch_parser.add_argument("--dry-run", action="store_true")
+    apply_patch_parser.add_argument(
+        "--i-accept-secret-write-risk",
+        action="store_true",
+        dest="allow_sensitive_write",
+    )
+    apply_patch_parser.set_defaults(handler=_handle_apply_patch)
+
     directory_group = groups.add_parser("dir", parents=[common], help="directory operations")
     directory_sub = directory_group.add_subparsers(dest="action", metavar="ACTION", required=True)
 
@@ -581,6 +654,94 @@ def _handle_delete(context: _Context) -> int:
     result = context.service.delete_file(
         context.args.path,
         expected_hash=context.args.expected_hash,
+        dry_run=context.args.dry_run,
+        actor=getattr(context.args, "actor", None),
+        task_id=getattr(context.args, "task_id", None),
+    )
+    return _emit_mutation(context, result)
+
+
+def _handle_replace_text(context: _Context) -> int:
+    result = context.service.replace_text(
+        context.args.path,
+        context.args.old,
+        context.args.new,
+        match=context.args.match,
+        expected_hash=context.args.expected_hash,
+        expected_content=context.args.expected_content,
+        expected_match_count=context.args.expected_match_count,
+        allow_sensitive_write=context.args.allow_sensitive_write,
+        dry_run=context.args.dry_run,
+        actor=getattr(context.args, "actor", None),
+        task_id=getattr(context.args, "task_id", None),
+    )
+    return _emit_mutation(context, result)
+
+
+def _handle_replace_lines(context: _Context) -> int:
+    result = context.service.replace_lines(
+        context.args.path,
+        context.args.start_line,
+        context.args.end_line,
+        context.args.replacement,
+        expected_content=context.args.expected_content,
+        expected_hash=context.args.expected_hash,
+        dry_run=context.args.dry_run,
+        actor=getattr(context.args, "actor", None),
+        task_id=getattr(context.args, "task_id", None),
+    )
+    return _emit_mutation(context, result)
+
+
+def _handle_insert_lines(context: _Context) -> int:
+    result = context.service.insert_lines(
+        context.args.path,
+        context.args.line,
+        context.args.content,
+        position=context.args.position,
+        expected_content=context.args.expected_content,
+        expected_hash=context.args.expected_hash,
+        dry_run=context.args.dry_run,
+        actor=getattr(context.args, "actor", None),
+        task_id=getattr(context.args, "task_id", None),
+    )
+    return _emit_mutation(context, result)
+
+
+def _handle_delete_lines(context: _Context) -> int:
+    result = context.service.delete_lines(
+        context.args.path,
+        context.args.start_line,
+        context.args.end_line,
+        expected_content=context.args.expected_content,
+        expected_hash=context.args.expected_hash,
+        dry_run=context.args.dry_run,
+        actor=getattr(context.args, "actor", None),
+        task_id=getattr(context.args, "task_id", None),
+    )
+    return _emit_mutation(context, result)
+
+
+def _handle_apply_patch(context: _Context) -> int:
+    patch_file = context.args.patch_file
+    if patch_file is None:
+        if sys.stdin.isatty():
+            raise ValidationError("provide a patch file or patch content on standard input")
+        patch_text = sys.stdin.read()
+    else:
+        try:
+            patch_text = Path(patch_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            raise ValidationError(
+                f"cannot read patch file: {exc}", details={"patch": str(patch_file)}
+            ) from exc
+        except UnicodeDecodeError as exc:
+            raise ValidationError(
+                f"patch file is not UTF-8 text: {exc}", details={"patch": str(patch_file)}
+            ) from exc
+    result = context.service.apply_patch(
+        patch_text,
+        allow_sensitive_write=context.args.allow_sensitive_write,
         dry_run=context.args.dry_run,
         actor=getattr(context.args, "actor", None),
         task_id=getattr(context.args, "task_id", None),

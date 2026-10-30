@@ -215,6 +215,34 @@ class OperationDiff:
 
 
 @dataclass(frozen=True, slots=True)
+class PatchHunkResult:
+    """One unified-diff hunk and what happened to it.
+
+    ``status`` is ``"applied"`` for a real application, ``"would_apply"`` for a
+    dry run, and ``"rejected"`` when a hunk could not be placed. Line numbers in
+    a hunk header are 1-based; an empty old side uses position 0.
+    """
+
+    old_start: int
+    old_count: int
+    new_start: int
+    new_count: int
+    status: str
+
+
+@dataclass(frozen=True, slots=True)
+class PatchFileResult:
+    """One path affected by :func:`apply_patch`, with its per-hunk outcomes."""
+
+    path: str
+    change: Literal["created", "modified", "deleted", "unchanged"]
+    applied: bool
+    before_hash: str | None
+    after_hash: str | None
+    hunks: tuple[PatchHunkResult, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class MutationResult:
     """The stable shape of every mutating call.
 
@@ -223,6 +251,11 @@ class MutationResult:
     restore the previous bytes: it is ``False`` when an affected file exceeded
     the history size cap, because its previous bytes were deliberately not
     stored.
+
+    ``match_stage`` and ``match_count`` describe text replacement, and
+    ``preview_diff`` carries a dry-run unified diff. ``patch_files`` describes a
+    patch application; a recovered failure reports what was rolled back in the
+    error details.
     """
 
     workspace: str
@@ -238,6 +271,10 @@ class MutationResult:
     items: tuple[OperationItemResult, ...] = ()
     affected_count: int | None = None
     history_skipped: tuple[str, ...] = ()
+    match_stage: str | None = None
+    match_count: int | None = None
+    preview_diff: str | None = None
+    patch_files: tuple[PatchFileResult, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = _jsonable(asdict(self))

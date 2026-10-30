@@ -508,6 +508,136 @@ class FilekeeperService:
             task_id=task_id,
         )
 
+    # -- text editing -------------------------------------------------------
+    def replace_text(
+        self,
+        path: str,
+        old: str,
+        new: str,
+        *,
+        match: str,
+        expected_hash: str | None = None,
+        expected_content: str | None = None,
+        expected_match_count: int | None = None,
+        allow_sensitive_write: bool = False,
+        dry_run: bool = False,
+        actor: str | None = None,
+        task_id: str | None = None,
+    ) -> MutationResult:
+        return operations.edit.replace_text(
+            self.handle,
+            path,
+            old,
+            new,
+            match=match,
+            expected_hash=expected_hash,
+            expected_content=expected_content,
+            expected_match_count=expected_match_count,
+            allow_sensitive_write=allow_sensitive_write,
+            dry_run=dry_run,
+            journal=None if dry_run else self.history,
+            actor=actor,
+            task_id=task_id,
+        )
+
+    def replace_lines(
+        self,
+        path: str,
+        start_line: int,
+        end_line: int,
+        replacement: str,
+        *,
+        expected_content: str | None = None,
+        expected_hash: str | None = None,
+        dry_run: bool = False,
+        actor: str | None = None,
+        task_id: str | None = None,
+    ) -> MutationResult:
+        return operations.edit.replace_lines(
+            self.handle,
+            path,
+            start_line,
+            end_line,
+            replacement,
+            expected_content=expected_content,
+            expected_hash=expected_hash,
+            dry_run=dry_run,
+            journal=None if dry_run else self.history,
+            actor=actor,
+            task_id=task_id,
+        )
+
+    def insert_lines(
+        self,
+        path: str,
+        line: int | None,
+        content: str,
+        *,
+        position: str = "after",
+        expected_content: str | None = None,
+        expected_hash: str | None = None,
+        dry_run: bool = False,
+        actor: str | None = None,
+        task_id: str | None = None,
+    ) -> MutationResult:
+        return operations.edit.insert_lines(
+            self.handle,
+            path,
+            line,
+            content,
+            position=position,
+            expected_content=expected_content,
+            expected_hash=expected_hash,
+            dry_run=dry_run,
+            journal=None if dry_run else self.history,
+            actor=actor,
+            task_id=task_id,
+        )
+
+    def delete_lines(
+        self,
+        path: str,
+        start_line: int,
+        end_line: int,
+        *,
+        expected_content: str | None = None,
+        expected_hash: str | None = None,
+        dry_run: bool = False,
+        actor: str | None = None,
+        task_id: str | None = None,
+    ) -> MutationResult:
+        return operations.edit.delete_lines(
+            self.handle,
+            path,
+            start_line,
+            end_line,
+            expected_content=expected_content,
+            expected_hash=expected_hash,
+            dry_run=dry_run,
+            journal=None if dry_run else self.history,
+            actor=actor,
+            task_id=task_id,
+        )
+
+    def apply_patch(
+        self,
+        patch_text: str,
+        *,
+        allow_sensitive_write: bool = False,
+        dry_run: bool = False,
+        actor: str | None = None,
+        task_id: str | None = None,
+    ) -> MutationResult:
+        return operations.edit.apply_patch(
+            self.handle,
+            patch_text,
+            allow_sensitive_write=allow_sensitive_write,
+            dry_run=dry_run,
+            journal=None if dry_run else self.history,
+            actor=actor,
+            task_id=task_id,
+        )
+
     def create_directory(
         self,
         path: str,

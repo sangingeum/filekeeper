@@ -150,6 +150,23 @@ def mutation(result: MutationResult) -> str:
         lines.append(f"after_hash: {result.after_hash}")
     if result.before_hash and result.before_hash != result.after_hash:
         lines.append(f"before_hash: {result.before_hash}")
+    if result.match_stage is not None:
+        lines.append(f"match_stage: {result.match_stage}")
+    if result.match_count is not None:
+        lines.append(f"match_count: {result.match_count}")
+    if result.patch_files:
+        lines.append(
+            f"patch_files: {len(result.patch_files)} "
+            "(recoverable through history, not atomic across files)"
+        )
+        for file in result.patch_files:
+            hunks = ", ".join(
+                f"hunk {hunk.old_start}: {hunk.status}" for hunk in file.hunks
+            )
+            lines.append(f"  {file.change:<9} {file.path}  {hunks}")
+    if result.preview_diff:
+        lines.append("diff:")
+        lines.extend(result.preview_diff.rstrip("\n").split("\n"))
     if result.operation_id is not None:
         lines.append(f"operation_id: {result.operation_id}")
         lines.append(f"undo_available: {'yes' if result.undo_available else 'no'}")

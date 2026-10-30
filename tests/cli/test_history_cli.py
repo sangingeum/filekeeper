@@ -141,3 +141,27 @@ def test_history_show_of_an_unknown_operation_is_a_path_error(
 
     assert code == exit_codes.PATH_NOT_FOUND
     assert json.loads(out)["error"]["code"] == "OPERATION_NOT_FOUND"
+
+
+def test_history_diff_keeps_lines_apart_when_the_file_has_no_final_newline(
+    run_cli, workspace_root: Path
+) -> None:
+    run_cli("workspace", "create", "project", str(workspace_root))
+    (workspace_root / "plain.txt").write_text("alpha", encoding="utf-8")
+    code, out, _ = run_cli("file", "write", "plain.txt", "--content", "beta")
+    operation_id = _operation_id(out)
+
+    code, out, _ = run_cli("history", "diff", operation_id, "--json")
+    assert code == exit_codes.SUCCESS
+    unified = json.loads(out)["files"][0]["unified_diff"]
+
+    assert "-alpha\n" in unified
+    assert "+beta\n" in unified
+    assert all(line.endswith("\n") for line in unified.splitlines(keepends=True))
+    assert unified.count("\\ No newline at end of file") == 2
+
+    code, out, _ = run_cli("history", "diff", operation_id)
+    assert code == exit_codes.SUCCESS
+    lines = out.splitlines()
+    assert "-alpha" in lines
+    assert "+beta" in lines

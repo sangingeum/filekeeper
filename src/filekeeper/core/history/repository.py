@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import difflib
 import sqlite3
 from typing import Any
 
+from ..diffing import unified_diff_text
 from ..errors import HistoryUnavailableError, OperationNotFoundError, StorageError
 from ..models import DiffEntry, OperationDiff, OperationItemRecord, OperationRecord
 from .journal import OperationJournal, _row_to_operation
@@ -123,14 +123,11 @@ def _diff_entry(journal: OperationJournal, item: OperationItemRecord) -> DiffEnt
             is_binary=True,
             unified_diff="",
         )
-    diff = "".join(
-        difflib.unified_diff(
-            before_text.splitlines(keepends=True),
-            after_text.splitlines(keepends=True),
-            fromfile=f"a/{item.relative_path}" if item.before_exists else "/dev/null",
-            tofile=f"b/{item.relative_path}" if item.after_exists else "/dev/null",
-            lineterm="\n",
-        )
+    diff = unified_diff_text(
+        before_text,
+        after_text,
+        fromfile=f"a/{item.relative_path}" if item.before_exists else "/dev/null",
+        tofile=f"b/{item.relative_path}" if item.after_exists else "/dev/null",
     )
     return DiffEntry(
         path=item.relative_path,

@@ -27,6 +27,10 @@ class ErrorCode(StrEnum):
     SENSITIVE_PATH_REFUSED = "SENSITIVE_PATH_REFUSED"
     ALREADY_EXISTS = "ALREADY_EXISTS"
     CONTENT_CONFLICT = "CONTENT_CONFLICT"
+    NO_MATCH = "NO_MATCH"
+    MATCH_COUNT_MISMATCH = "MATCH_COUNT_MISMATCH"
+    PATCH_FAILED = "PATCH_FAILED"
+    PARTIAL_RECOVERY = "PARTIAL_RECOVERY"
     BINARY_CONTENT_REFUSED = "BINARY_CONTENT_REFUSED"
     LIMIT_EXCEEDED = "LIMIT_EXCEEDED"
     INVALID_PATTERN = "INVALID_PATTERN"
@@ -142,6 +146,30 @@ class AlreadyExistsError(FilekeeperError):
 class ContentConflictError(FilekeeperError):
     code = ErrorCode.CONTENT_CONFLICT
     retryable = True
+
+
+class NoMatchError(FilekeeperError):
+    """No occurrence of the requested text was found; nothing was modified."""
+
+    code = ErrorCode.NO_MATCH
+
+
+class MatchCountMismatchError(FilekeeperError):
+    """The requested text matched a different number of times than expected."""
+
+    code = ErrorCode.MATCH_COUNT_MISMATCH
+
+
+class PatchFailedError(FilekeeperError):
+    """A patch was rejected or could not be applied; the pre-patch state is intact."""
+
+    code = ErrorCode.PATCH_FAILED
+
+
+class PartialRecoveryError(FilekeeperError):
+    """A failed multi-file application could not be fully rolled back."""
+
+    code = ErrorCode.PARTIAL_RECOVERY
 
 
 class BinaryContentRefusedError(FilekeeperError):
