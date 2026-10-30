@@ -63,10 +63,23 @@ def test_stale_expected_hash_is_refused_without_modifying_the_file(service) -> N
     stale = "sha256:" + "0" * 64
     before = (service.root / "notes.txt").read_bytes()
 
-    with pytest.raises(ContentConflictError):
+    with pytest.raises(ContentConflictError) as caught:
         service.write_file("notes.txt", "clobber\n", expected_hash=stale)
 
     assert (service.root / "notes.txt").read_bytes() == before
+    error = caught.value
+    assert error.retryable is False
+    assert error.details["recovery"] == (
+        "re-read the target, then retry against its current hash"
+    )
+    assert error.details["expected_hash"] == stale
+    assert str(error.details["actual_hash"]).startswith("sha256:")
+
+    # The declared recovery path works: re-read, then write against the new hash.
+    current = service.get_file_hash("notes.txt")
+    retried = service.write_file("notes.txt", "clobber\n", expected_hash=current)
+    assert retried.before_hash == current
+    assert (service.root / "notes.txt").read_text(encoding="utf-8") == "clobber\n"
 
 
 def test_write_preserves_a_utf8_bom(service) -> None:

@@ -31,7 +31,7 @@ def test_history_list_show_and_diff_have_a_stable_json_contract(
     listing = json.loads(out)
     assert listing["ok"] is True
     assert listing["count"] >= 1
-    assert listing["operations"][0]["id"] == operation_id
+    assert listing["operations"][0]["operation_id"] == operation_id
 
     code, out, _ = run_cli("history", "show", operation_id, "--json")
     assert code == exit_codes.SUCCESS
@@ -165,3 +165,33 @@ def test_history_diff_keeps_lines_apart_when_the_file_has_no_final_newline(
     lines = out.splitlines()
     assert "-alpha" in lines
     assert "+beta" in lines
+
+
+def test_history_list_and_undo_use_the_same_operation_key(
+    run_cli, workspace_root: Path
+) -> None:
+    run_cli("workspace", "create", "project", str(workspace_root))
+    run_cli("file", "write", "notes.txt", "--content", "changed\n")
+
+    code, out, _ = run_cli("history", "list", "--json")
+    assert code == exit_codes.SUCCESS
+    listing = json.loads(out)
+    operation = listing["operations"][0]
+    assert "id" not in operation
+    operation_id = operation["operation_id"]
+    assert operation_id.startswith("op_")
+
+    code, out, _ = run_cli("history", "show", operation_id, "--json")
+    assert code == exit_codes.SUCCESS
+    shown = json.loads(out)["operation"]
+    assert "id" not in shown
+    assert shown["operation_id"] == operation_id
+
+    code, out, _ = run_cli("history", "undo", operation_id, "--json")
+    assert code == exit_codes.SUCCESS
+    result = json.loads(out)
+    assert result["ok"] is True
+    assert result["operation_id"].startswith("op_")
+    assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == (
+        "alpha\nbeta\ngamma\n"
+    )

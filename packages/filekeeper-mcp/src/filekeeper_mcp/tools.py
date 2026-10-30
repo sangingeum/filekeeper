@@ -135,23 +135,20 @@ class FilekeeperTools:
         build: Callable[[Any], dict[str, Any]] | None = None,
         guard: Callable[[], None] | None = None,
     ) -> types.CallToolResult:
-        workspace: str | None = self.selection.selected_name()
         try:
             if guard is not None:
                 guard()
             service = self.selection.service()
-            workspace = service.name
             result = call(service)
         except FilekeeperError as error:
             return error_result(
                 error,
                 host_paths=self.selection.host_paths(),
                 caller_path=path,
-                workspace=workspace,
             )
         except Exception:
             logger.exception("unhandled failure in an MCP tool")
-            return internal_error_result(caller_path=path, workspace=workspace)
+            return internal_error_result()
         payload = build(result) if build is not None else success_payload(result)
         return _ok(payload)
 

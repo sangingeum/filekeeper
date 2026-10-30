@@ -165,8 +165,10 @@ def test_history_skip_cap_is_enforced_and_reported(tmp_path: Path) -> None:
     app.registry.config = app.config
     service = app.workspace(name="capped")
 
-    service.create_file("big.txt", "x" * 200)
+    created = service.create_file("big.txt", "x" * 200)
     result = service.write_file("big.txt", "y" * 200)
+    created_record = service.get_operation(created.operation_id or "")
+    assert created_record.history_skipped == ("big.txt",)
 
     assert result.operation_id is not None
     assert result.undo_available is False
@@ -260,3 +262,14 @@ def _blob_hashes(service) -> list[tuple[str]]:
         return list(connection.execute("SELECT hash FROM blobs").fetchall())
     finally:
         connection.close()
+
+
+def test_undo_record_does_not_claim_history_was_skipped(service) -> None:
+    result = service.write_file("notes.txt", "replacement\n")
+
+    undone = service.undo(result.operation_id)
+    record = service.get_operation(undone.operation_id or "")
+
+    assert record.operation_type == "undo"
+    assert record.history_skipped == ()
+    assert "history_skipped" not in record.metadata

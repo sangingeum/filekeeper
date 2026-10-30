@@ -181,7 +181,7 @@ def history_list(operations: tuple[OperationRecord, ...]) -> str:
     if not operations:
         return "no recorded operations in this workspace"
     lines = [
-        f"{record.id}  {record.created_at}  {record.status:<9} "
+        f"{record.operation_id}  {record.created_at}  {record.status:<9} "
         f"{record.operation_type:<17} {record.target_path or '-'}"
         + (f"  [{record.actor}]" if record.actor else "")
         for record in operations
@@ -191,7 +191,7 @@ def history_list(operations: tuple[OperationRecord, ...]) -> str:
 
 def history_show(record: OperationRecord) -> str:
     lines = [
-        f"id: {record.id}",
+        f"operation_id: {record.operation_id}",
         f"workspace_id: {record.workspace_id}",
         f"operation_type: {record.operation_type}",
         f"status: {record.status}",

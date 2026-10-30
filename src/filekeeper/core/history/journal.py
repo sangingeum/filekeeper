@@ -96,9 +96,10 @@ class OperationJournal:
         self, data: bytes | None, digest: str | None, skipped: list[str], path: str
     ) -> str | None:
         if data is None:
-            if digest is not None:
-                # A hash without bytes means the caller deliberately did not keep
-                # the content (an oversize file); record that history was skipped.
+            # A hash without bytes is only "skipped" when the store genuinely
+            # does not hold those bytes. An undo names hashes whose blobs the
+            # original operation already stored, so its history is complete.
+            if digest is not None and not self.blobs.has(digest):
                 skipped.append(path)
             return digest
         content_hash = hash_bytes(data)
@@ -384,7 +385,7 @@ def _row_to_operation(row: sqlite3.Row, items: Any) -> OperationRecord:
     metadata = _load_metadata(row["metadata_json"])
     skipped = metadata.get("history_skipped", [])
     return OperationRecord(
-        id=str(row["id"]),
+        operation_id=str(row["id"]),
         workspace_id=str(row["workspace_id"]),
         operation_type=str(row["operation_type"]),
         target_path=None if row["target_path"] is None else str(row["target_path"]),

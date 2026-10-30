@@ -144,8 +144,23 @@ class AlreadyExistsError(FilekeeperError):
 
 
 class ContentConflictError(FilekeeperError):
+    """The guarded write's expected hash or content no longer matches.
+
+    The identical request cannot succeed, so ``retryable`` is ``False``. The
+    recovery path is stated in the payload: read the current state again and
+    issue the write against the hash that read returned.
+    """
+
     code = ErrorCode.CONTENT_CONFLICT
-    retryable = True
+    retryable = False
+
+    def __init__(self, message: str, *, details: dict[str, Any] | None = None) -> None:
+        payload: dict[str, Any] = {
+            "recovery": "re-read the target, then retry against its current hash"
+        }
+        if details:
+            payload.update(details)
+        super().__init__(message, details=payload)
 
 
 class NoMatchError(FilekeeperError):

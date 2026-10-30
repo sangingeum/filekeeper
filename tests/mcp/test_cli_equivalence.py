@@ -72,6 +72,9 @@ def test_a_guarded_write_produces_the_same_bytes_through_both_adapters(
     assert cli_payload["before_hash"] == mcp_payload["before_hash"]
     assert cli_payload["undo_available"] is True
     assert mcp_payload["undo_available"] is True
+    assert set(cli_payload) == set(mcp_payload)
+    for field in ("ok", "path", "changed", "undo_available"):
+        assert cli_payload[field] == mcp_payload[field], field
     assert cli_payload["operation_id"].startswith("op_")
     assert mcp_payload["operation_id"].startswith("op_")
 
@@ -113,6 +116,21 @@ def test_a_stale_hash_is_the_same_refusal_through_both_adapters(
     assert cli_payload["error"]["code"] == "CONTENT_CONFLICT"
     assert refusal.is_error is True
     assert refusal.code == "CONTENT_CONFLICT"
-    assert refusal.error["retryable"] is True
-    assert cli_payload["error"]["retryable"] is True
+    assert refusal.error["retryable"] is False
+    assert cli_payload["error"]["retryable"] is False
+    assert set(cli_payload) == {"ok", "error"}
+    assert set(refusal.structured) == {"ok", "error"}
+    assert set(cli_payload["error"]) == set(refusal.error) == {
+        "code",
+        "message",
+        "retryable",
+        "details",
+    }
+    for field in ("code", "retryable"):
+        assert cli_payload["error"][field] == refusal.error[field]
+    assert cli_payload["error"]["details"]["path"] == "notes.txt"
+    assert refusal.error["details"]["path"] == "notes.txt"
+    assert cli_payload["error"]["details"]["actual_hash"] == (
+        refusal.error["details"]["actual_hash"]
+    )
     assert (cli_root / "notes.txt").read_bytes() == (mcp_root / "notes.txt").read_bytes()

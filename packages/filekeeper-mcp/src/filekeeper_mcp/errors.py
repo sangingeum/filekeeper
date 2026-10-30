@@ -4,6 +4,10 @@ Every failure reaches the client as data, never as a Python traceback. The Core
 error code and the caller's own path survive; host filesystem paths do not. A
 resolved host path is useful to nobody outside this machine and can leak the shape
 of the tree the server is confined to.
+
+The envelope is the same one the CLI emits: ``{"ok": false, "error": {...}}``
+with no fields beside ``ok`` and ``error`` at the top level. The caller's path
+travels inside ``error.details.path``, where Core already records it.
 """
 
 from __future__ import annotations
@@ -53,9 +57,12 @@ def error_payload(
     *,
     host_paths: Iterable[str],
     caller_path: str | None = None,
-    workspace: str | None = None,
 ) -> dict[str, Any]:
-    """The stable error envelope: code, message, retryable, sanitized details."""
+    """The stable error envelope: ``ok`` plus ``error.code/message/retryable/details``.
+
+    Nothing is duplicated at the top level: a client reads every error the same
+    way it reads a CLI JSON error.
+    """
 
     locations = tuple(host_paths)
     details = {
@@ -68,14 +75,11 @@ def error_payload(
         "message": scrub_text(error.message, locations),
         "retryable": error.retryable,
     }
+    if caller_path is not None:
+        details.setdefault("path", caller_path)
     if details:
         error_body["details"] = details
-    payload: dict[str, Any] = {"ok": False, "error": error_body}
-    if caller_path is not None:
-        payload["path"] = caller_path
-    if workspace is not None:
-        payload["workspace"] = workspace
-    return payload
+    return {"ok": False, "error": error_body}
 
 
 def error_result(
@@ -83,11 +87,8 @@ def error_result(
     *,
     host_paths: Iterable[str],
     caller_path: str | None = None,
-    workspace: str | None = None,
 ) -> types.CallToolResult:
-    payload = error_payload(
-        error, host_paths=host_paths, caller_path=caller_path, workspace=workspace
-    )
+    payload = error_payload(error, host_paths=host_paths, caller_path=caller_path)
     return types.CallToolResult(
         content=[types.TextContent(type="text", text=compact_json(payload))],
         structured_content=payload,
@@ -95,21 +96,14 @@ def error_result(
     )
 
 
-def internal_error_result(
-    *, caller_path: str | None = None, workspace: str | None = None
-) -> types.CallToolResult:
+def internal_error_result() -> types.CallToolResult:
     """A crash rendered as data. The exception text stays in the server log."""
 
     error = FilekeeperError(
         "the operation failed unexpectedly; nothing about the request was changed "
         "beyond what an earlier partial result reported"
     )
-    return error_result(
-        error,
-        host_paths=(),
-        caller_path=caller_path,
-        workspace=workspace,
-    )
+    return error_result(error, host_paths=())
 
 
 __all__ = [

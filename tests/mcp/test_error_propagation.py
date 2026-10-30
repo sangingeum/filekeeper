@@ -26,7 +26,9 @@ def _assert_clean(reply: ToolReply, target: ServerTarget) -> None:
     assert str(target.root) not in reply.text
 
 
-def test_a_stale_hash_is_a_retryable_conflict(target: ServerTarget) -> None:
+def test_a_stale_hash_is_not_retryable_and_names_the_recovery_path(
+    target: ServerTarget,
+) -> None:
     result = exercise(
         target,
         [
@@ -41,8 +43,12 @@ def test_a_stale_hash_is_a_retryable_conflict(target: ServerTarget) -> None:
     conflict = result.by_name("file_write")
     _assert_clean(conflict, target)
     assert conflict.code == "CONTENT_CONFLICT"
-    assert conflict.error["retryable"] is True
-    assert conflict.structured["path"] == "notes.txt"
+    assert conflict.error["retryable"] is False
+    assert conflict.error["details"]["recovery"] == (
+        "re-read the target, then retry against its current hash"
+    )
+    assert conflict.structured["error"]["details"]["path"] == "notes.txt"
+    assert set(conflict.structured) == {"ok", "error"}
     assert (target.root / "notes.txt").read_text(encoding="utf-8") == "alpha\nbeta\ngamma\n"
 
 
@@ -68,7 +74,7 @@ def test_a_credential_shaped_target_is_refused_and_an_override_warns(
     _assert_clean(refused, target)
     assert refused.code == "SENSITIVE_PATH_REFUSED"
     assert refused.error["retryable"] is False
-    assert refused.structured["path"] == ".env"
+    assert refused.structured["error"]["details"]["path"] == ".env"
 
     assert overridden.is_error is False
     assert overridden.structured["ok"] is True
@@ -116,7 +122,7 @@ def test_a_storage_failure_reports_storage_error_without_a_host_path(
     failed = result.by_name("file_write")
     _assert_clean(failed, target)
     assert failed.code == "STORAGE_ERROR"
-    assert failed.structured["path"] == "notes.txt"
+    assert failed.structured["error"]["details"]["path"] == "notes.txt"
     assert (target.root / "notes.txt").read_text(encoding="utf-8") == "first\n"
 
 

@@ -178,7 +178,7 @@ def test_every_mutation_and_edit_tool_delegates_with_undo_metadata(
 
     history = result.by_name("history_list").structured
     assert history["count"] == 12
-    assert history["operations"][0]["id"]
+    assert history["operations"][0]["operation_id"]
 
     record = result.by_name("history_get").structured["operation"]
     assert record["operation_type"] == "apply_patch"
@@ -207,3 +207,46 @@ def test_workspace_list_reports_a_registered_workspace(tmp_path: Path) -> None:
 
     assert [workspace["name"] for workspace in payload["workspaces"]] == ["project"]
     assert payload["default_workspace"] is None
+
+
+def test_history_list_and_undo_share_one_operation_key(target: ServerTarget) -> None:
+    result = exercise(
+        target,
+        [
+            ("file_write", {"path": "notes.txt", "content": "changed\n"}),
+            ("history_list", {}),
+            (
+                "history_get",
+                lambda seen: {
+                    "operation_id": seen.by_name("history_list").structured[
+                        "operations"
+                    ][0]["operation_id"]
+                },
+            ),
+            (
+                "undo_operation",
+                lambda seen: {
+                    "operation_id": seen.by_name("history_list").structured[
+                        "operations"
+                    ][0]["operation_id"]
+                },
+            ),
+        ],
+    )
+
+    listing = result.by_name("history_list").structured
+    operation = listing["operations"][0]
+    assert "id" not in operation
+    operation_id = operation["operation_id"]
+    assert operation_id.startswith("op_")
+
+    shown = result.by_name("history_get").structured["operation"]
+    assert "id" not in shown
+    assert shown["operation_id"] == operation_id
+
+    undone = result.by_name("undo_operation").structured
+    assert undone["ok"] is True
+    assert undone["operation_id"] != operation_id
+    assert (target.root / "notes.txt").read_text(encoding="utf-8") == (
+        "alpha\nbeta\ngamma\n"
+    )

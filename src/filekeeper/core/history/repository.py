@@ -142,7 +142,7 @@ def _diff_entry(journal: OperationJournal, item: OperationItemRecord) -> DiffEnt
 def diff_operation(journal: OperationJournal, operation_id: str) -> OperationDiff:
     record = get_operation(journal, operation_id)
     return OperationDiff(
-        operation_id=record.id,
+        operation_id=record.operation_id,
         items=tuple(
             _diff_entry(journal, item) for item in record.items if item.item_type == "file"
         ),

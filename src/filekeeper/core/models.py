@@ -178,9 +178,13 @@ class OperationItemRecord:
 
 @dataclass(frozen=True, slots=True)
 class OperationRecord:
-    """An operation as stored in the history ledger."""
+    """An operation as stored in the history ledger.
 
-    id: str
+    ``operation_id`` is the single key used by every surface: mutations,
+    ``history list`` / ``history show``, diff, undo and the MCP tools.
+    """
+
+    operation_id: str
     workspace_id: str
     operation_type: str
     target_path: str | None

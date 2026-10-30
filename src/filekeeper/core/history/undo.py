@@ -141,21 +141,24 @@ def _plan(journal: OperationJournal, record: OperationRecord) -> list[_Step]:
     if conflicts:
         raise UndoConflictError(
             "cannot undo: these paths changed after the operation, so nothing was modified",
-            details={"operation_id": record.id, "conflicting_paths": ", ".join(sorted(conflicts))},
+            details={
+                "operation_id": record.operation_id,
+                "conflicting_paths": ", ".join(sorted(conflicts)),
+            },
         )
     if record.status == FAILED and already_before == len(record.items):
         raise UndoConflictError(
             "operation did not take effect; there is nothing to undo",
-            details={"operation_id": record.id},
+            details={"operation_id": record.operation_id},
         )
     if record.status == UNDONE:
         raise UndoConflictError(
-            "operation is already undone", details={"operation_id": record.id}
+            "operation is already undone", details={"operation_id": record.operation_id}
         )
     if record.status not in {COMMITTED, FAILED}:
         raise UndoConflictError(
             "operation is not committed and cannot be undone",
-            details={"operation_id": record.id, "status": record.status},
+            details={"operation_id": record.operation_id, "status": record.status},
         )
     return steps
 
@@ -268,7 +271,7 @@ def _result(
         changed=True,
         before_hash=record.after_hash,
         after_hash=record.before_hash,
-        summary=f"Undid operation {record.id}.",
+        summary=f"Undid operation {record.operation_id}.",
         operation_id=undo_operation_id,
         undo_available=True,
         items=items,
@@ -299,13 +302,13 @@ def undo_operation(
     begun = journal.begin(
         operation_type="undo",
         target_path=record.target_path,
-        summary=f"Undid operation {record.id}.",
+        summary=f"Undid operation {record.operation_id}.",
         items=undo_items,
         actor=actor,
         task_id=task_id,
         before_hash=record.after_hash,
         after_hash=record.before_hash,
-        metadata={"undone_operation": record.id},
+        metadata={"undone_operation": record.operation_id},
     )
     try:
         _apply(journal, steps)
@@ -313,7 +316,7 @@ def undo_operation(
         journal.abort(begun.operation_id)
         raise
     journal.commit(begun.operation_id)
-    journal._set_status(record.id, UNDONE)
+    journal._set_status(record.operation_id, UNDONE)
     return _result(
         journal, record, begun.operation_id, workspace_name=workspace_name, steps=steps
     )
@@ -355,7 +358,7 @@ def undo_last(
 
     record = latest_undoable(journal, actor=actor)
     return undo_operation(
-        journal, record.id, workspace_name=workspace_name, actor=actor, task_id=task_id
+        journal, record.operation_id, workspace_name=workspace_name, actor=actor, task_id=task_id
     )
 
 
