@@ -3,7 +3,7 @@ name = "filekeeper-cli"
 version = "0.1.0"
 description = "Safe, predictable filesystem operations for humans and AI agents, with atomic writes and workspace confinement."
 readme = "README.md"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.12,<3.13"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "sangingeum", email = "sangingeum@gmail.com" }]
@@ -13,9 +13,7 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Filesystems",
 ]
@@ -66,7 +64,7 @@ exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedE
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 src = ["src", "tests", "packages/filekeeper-mcp/src"]
 
 [tool.ruff.lint]
@@ -78,7 +76,7 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "RET", "RUF"]
 "tests/**" = ["PTH"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 files = ["src", "packages/filekeeper-mcp/src"]
 warn_unreachable = true
