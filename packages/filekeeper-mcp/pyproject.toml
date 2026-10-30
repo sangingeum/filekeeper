@@ -1,0 +1,23 @@
+[project]
+name = "filekeeper-mcp"
+version = "0.1.0"
+description = "MCP server that exposes Filekeeper's filesystem operations to agent hosts."
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = "MIT"
+authors = [{ name = "sangingeum", email = "sangingeum@gmail.com" }]
+dependencies = [
+    "filekeeper>=0.1,<0.2",
+    "mcp>=1.2",
+]
+
+[project.scripts]
+filekeeper-mcp = "filekeeper_mcp.server:main"
+
+[build-system]
+requires = ["uv_build>=0.9.0,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "filekeeper_mcp"
+module-root = "src"

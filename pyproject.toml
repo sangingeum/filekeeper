@@ -1,0 +1,75 @@
+[project]
+name = "filekeeper"
+version = "0.1.0"
+description = "Safe, predictable filesystem operations for humans and AI agents, with atomic writes and workspace confinement."
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "sangingeum", email = "sangingeum@gmail.com" }]
+keywords = ["filesystem", "atomic-write", "cli", "agents", "mcp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Filesystems",
+]
+dependencies = []
+
+[project.scripts]
+keeper = "filekeeper.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/sangingeum/filekeeper"
+Changelog = "https://github.com/sangingeum/filekeeper/blob/main/CHANGELOG.md"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.0,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "filekeeper"
+module-root = "src"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = ["filekeeper"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "PTH", "RET", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PTH"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
+warn_unreachable = true
+show_error_codes = true

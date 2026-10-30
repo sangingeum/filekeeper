@@ -1,0 +1,21 @@
+# Filekeeper's own per-workspace state
+.filekeeper/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm

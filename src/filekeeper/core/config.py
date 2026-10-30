@@ -1,0 +1,127 @@
+"""Home directory resolution and configuration.
+
+Two kinds of state exist, and they live in different places on purpose:
+
+* the **registry** (workspace registrations and settings) lives in the user's
+  home, because it spans workspaces;
+* **per-workspace state** (the future operation journal and blob store) lives in
+  ``<workspace>/.filekeeper/`` by default, so it travels with the checkout.
+  ``state_location = "global"`` opts into one shared store under the home
+  directory instead.
+
+``config.toml`` in the home directory holds tunable limits. It is read on every
+invocation; writing it is left to the user (``keeper init`` creates it with the
+defaults spelled out).
+"""
+
+from __future__ import annotations
+
+import os
+import tomllib
+from dataclasses import dataclass, fields
+from pathlib import Path
+
+from .errors import StorageError, ValidationError
+
+CONFIG_FILENAME = "config.toml"
+STATE_DIR_NAME = ".filekeeper"
+
+
+@dataclass(frozen=True, slots=True)
+class Config:
+    """Limits and behaviour switches. Values are bytes unless stated otherwise."""
+
+    max_read_bytes: int = 5 * 1024 * 1024
+    max_write_bytes: int = 20 * 1024 * 1024
+    max_search_results: int = 500
+    max_directory_entries: int = 2000
+    max_recursion_depth: int = 25
+    max_line_length: int = 2000
+    fsync: bool = True
+    state_location: str = "project"
+
+    def __post_init__(self) -> None:
+        if self.state_location not in {"project", "global"}:
+            raise ValidationError(
+                "state_location must be 'project' or 'global'",
+                details={"state_location": self.state_location},
+            )
+        for field_info in fields(self):
+            value = getattr(self, field_info.name)
+            if isinstance(value, int) and not isinstance(value, bool) and value <= 0:
+                raise ValidationError(
+                    f"{field_info.name} must be positive", details={"value": value}
+                )
+
+
+def resolve_home(override: str | os.PathLike[str] | None = None) -> Path:
+    """Resolve Filekeeper's home directory: explicit, ``FILEKEEPER_HOME``, XDG, then default."""
+
+    if override is not None:
+        return Path(override).expanduser()
+    from_env = os.environ.get("FILEKEEPER_HOME")
+    if from_env:
+        return Path(from_env).expanduser()
+    xdg = os.environ.get("XDG_DATA_HOME")
+    if xdg:
+        return Path(xdg).expanduser() / "filekeeper"
+    return Path.home() / ".local" / "share" / "filekeeper"
+
+
+def config_path(home: Path) -> Path:
+    return home / CONFIG_FILENAME
+
+
+def load_config(home: Path) -> Config:
+    """Load ``config.toml``; a missing file yields defaults. Unknown keys are ignored."""
+
+    path = config_path(home)
+    if not path.exists():
+        return Config()
+    try:
+        with path.open("rb") as handle:
+            raw = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise StorageError(
+            f"cannot read configuration file: {exc}", details={"path": str(path)}
+        ) from exc
+
+    section = raw.get("filekeeper", raw)
+    if not isinstance(section, dict):
+        raise StorageError(
+            "configuration file must contain a table", details={"path": str(path)}
+        )
+
+    known = {field_info.name for field_info in fields(Config)}
+    values: dict[str, object] = {}
+    for key, value in section.items():
+        if key in known:
+            values[key] = value
+    try:
+        return Config(**values)  # type: ignore[arg-type]
+    except TypeError as exc:
+        raise StorageError(
+            f"invalid configuration value: {exc}", details={"path": str(path)}
+        ) from exc
+
+
+DEFAULT_CONFIG_TOML = """\
+# Filekeeper configuration.
+# All sizes are bytes. Delete a key to fall back to the built-in default.
+
+[filekeeper]
+max_read_bytes = 5242880
+max_write_bytes = 20971520
+max_search_results = 500
+max_directory_entries = 2000
+max_recursion_depth = 25
+max_line_length = 2000
+
+# Durability of atomic writes: flush and fsync the temporary file and the
+# parent directory before reporting success.
+fsync = true
+
+# "project" keeps per-workspace state in <workspace>/.filekeeper/ (default).
+# "global" keeps one shared store under this home directory instead.
+state_location = "project"
+"""

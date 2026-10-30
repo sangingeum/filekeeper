@@ -1,0 +1,165 @@
+# Design decisions
+
+Choices the specification left open, and why each was made. Where the plan and
+the design review disagreed, the review won; this file records what remained
+undecided and how it was settled.
+
+## State is split: home registry, project-local workspace state
+
+The specification put everything in one global directory; the design review
+requires project-local state by default. Both cannot be true of a registry that
+lists many roots.
+
+Settled as: workspace *registrations* and settings live in the home database
+(`metadata.sqlite3`), because no single workspace may own the list of all
+workspaces. Per-workspace state (operations, operation items, blobs, locks) lives
+in `<workspace>/.filekeeper/state.sqlite3` by default, so history travels with the
+checkout. `state_location = "global"` in `config.toml` instead uses
+`<home>/workspaces/<workspace-id>/`, keeping per-project attribution while making
+the store survive deleting the checkout.
+
+Consequence: two migration chains rather than one. `database.py` exposes
+`migrate_registry` and `migrate_workspace` over the same forward-only runner.
+
+## A single registered workspace is selected automatically
+
+Selection precedence is explicit `--workspace`, explicit `--root`, then the
+configured default. When there is no default and exactly one workspace is
+registered, that workspace is used. This is not a guess between alternatives; the
+specification only forbids choosing arbitrarily when several exist. With several
+workspaces and no default, the command fails with `NO_WORKSPACE_SELECTED` and
+lists them.
+
+## `--root` outside the registry is a transient workspace
+
+Naming an unregistered directory with `--root` runs the operation inside it with
+exactly the same confinement as a registered workspace, but records nothing and
+creates no registration. This keeps one-off use cheap without ever broadening the
+allowed roots silently: the root comes from the caller's explicit argument, which
+is the same authority as `--workspace`.
+
+## The CLI uses `argparse`, not a CLI framework
+
+Core must be dependency-free, and the review requires that installing the CLI does
+not pull in the MCP SDK. Keeping the whole `filekeeper` distribution at zero
+third-party dependencies is simpler to state and verify than "Core is clean but the
+CLI is not". `argparse` covers the command tree; the cost is a little more
+boilerplate in `cli/app.py`.
+
+## Directory operations get their own `dir` group
+
+The specification's proposed command tree only shows `file` commands, yet the
+operation list includes `create_directory`, `move_directory` and
+`delete_directory`. The CLI therefore has `keeper dir create|move|delete`. Helpers
+that are Core-only but not in the required CLI list (`read_multiple_files`) are
+exposed as `keeper file read-many` because it reduces round trips, which is the
+stated purpose of the operation.
+
+## Credential refusal covers writes, not reads
+
+The review asks for refusal on writes. Reads of `.env` or `id_rsa` are still
+allowed: the tool is often the thing that needs to inspect such a file, and
+refusing reads is not what was asked. Refusal is a name-shape check (file name,
+suffix, or containing key directory), not a content scan, so it is cheap and
+predictable. The override is `allow_sensitive_write=True` in Core and
+`--i-accept-secret-write-risk` on the CLI; both names state what is being accepted.
+
+## Sensitive-path refusal precedes parent-directory validation
+
+A write to `.ssh/config` when `.ssh/` does not exist reports
+`SENSITIVE_PATH_REFUSED`, not a missing-parent error. The refusal is about the
+target's meaning, and reporting it first avoids teaching a caller to create the
+directory and retry.
+
+## Newlines are never normalised; BOMs are preserved
+
+Content is decoded, and re-encoded exactly. `\r\n` stays `\r\n`; a UTF-8 BOM
+survives a rewrite; the detected convention is reported in results
+(`newline`, `has_bom`) and never applied. This follows the specification's "do not
+silently normalize line endings" literally, including when the caller's content
+uses a different convention than the file it replaces.
+
+Encoding inheritance: an existing file is decoded to learn its encoding (and BOM),
+and the rewrite uses it unless the caller names an encoding explicitly. New files
+default to UTF-8 without a BOM.
+
+## Text reads refuse binary content
+
+`read_file` is a text operation. A file whose first 8 KiB contain a NUL byte, or
+whose bytes do not decode, is refused with `BINARY_CONTENT_REFUSED` unless an
+encoding is named explicitly. Binary transport is not part of this release and is
+documented as a limitation rather than half-implemented.
+
+## `..` is rejected lexically, not just canonically
+
+`sub/../notes.txt` stays inside the workspace, but any relative path containing a
+`..` segment is refused anyway. Such paths are never necessary for workspace work,
+and a blanket rule is cheaper to audit than a proof that each normalisation is
+benign. Absolute paths are canonically resolved and then bounded; they are never
+rejected for shape alone.
+
+## Symlinks: readable when they stay inside, never a write target
+
+A symlink whose canonical target leaves the workspace is refused. A symlink whose
+target stays inside may be read; its metadata is reported from the link itself
+(`symlink_target`), not from the target. Writes to a symlink path are always
+refused, because an atomic rename would replace the link rather than the file it
+points at.
+
+## Recursive directory deletion needs two explicit flags
+
+`recursive=True` alone is not enough: `confirm_recursive=True` must also be passed
+(CLI: `--recursive --confirm-recursive`). History is not recorded in this release,
+so a deleted tree cannot be restored; two flags make the destructive intent
+impossible to inherit by accident from a default.
+
+## Copy and move refuse an occupied destination by default
+
+`copy_file` overwrites an existing destination only when
+`expected_destination_hash` matches the current content — the same optimistic
+concurrency rule as `write_file`. `move_file` overwrites only with
+`overwrite=True`. Neither operation is atomic across its two paths, and the README
+says so in user-facing words.
+
+## `dry_run` is available on mutations now
+
+The specification ties dry-run to edits and patches, but reporting what a whole-file
+mutation would do is cheap, useful and keeps the result shape identical. Dry runs
+validate every guard (confinement, sensitive paths, expected hashes, size limits,
+directory preconditions) and then stop before touching the filesystem.
+
+## Exit code 10 for credential refusal
+
+Codes 0–9 were proposed in the specification, with 7 and 8 reserved for patch and
+partial-recovery failures. Credential refusal gets its own code (10) so a script
+can distinguish "you asked me to write a secret" from a generic boundary violation
+(4). Codes are documented in `README.md` and in `cli/exit_codes.py`.
+
+## The blob store is included before the operations that use it
+
+The review's ordering rule is that blobs are written and fsynced *before* a
+pending operation record, so a lost journal record can never hold the only copy of
+the previous bytes. `BlobStore` therefore exists now, with tests, even though no
+operation writes to it in this release. The history release will add journaling
+around it, not replace it.
+
+## Filekeeper's own state is not an addressable path
+
+Any path inside the workspace's `.filekeeper/` directory is refused with
+`PATH_IS_STATE_PATH`. This is the enforcement half of the review's requirement that
+the tool never records its own state files in its own history; it also stops
+`--recursive` listings and searches from walking the state store.
+
+## `.gitignore` handling is repository-aware
+
+On the first mutation that creates the state directory, Filekeeper appends
+`.filekeeper/` to `.gitignore` if the workspace is inside a git repository (it
+creates the file if a repository has none). Outside a repository it writes
+nothing: an unrequested `.gitignore` in an arbitrary directory is noise. A failed
+update is reported in the result's warnings rather than failing the operation.
+
+## Read byte limits are a ceiling, not just a default
+
+`max_bytes` on a read narrows the limit but cannot exceed `max_read_bytes` from
+`config.toml`. A caller cannot talk the tool into loading an unbounded file. The
+same pattern applies to search results, directory entries and recursion depth.
