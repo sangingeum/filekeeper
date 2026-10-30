@@ -32,6 +32,15 @@ def test_existing_permissions_are_preserved(tmp_path: Path) -> None:
     assert target.read_bytes() == b"new\n"
 
 
+def test_new_file_follows_the_umask(tmp_path: Path) -> None:
+    target = tmp_path / "created.txt"
+    atomic_write_bytes(target, b"content\n")
+
+    current = os.umask(0)
+    os.umask(current)
+    assert stat.S_IMODE(target.stat().st_mode) == 0o666 & ~current
+
+
 def test_explicit_mode_is_applied(tmp_path: Path) -> None:
     target = tmp_path / "secret.txt"
     atomic_write_bytes(target, b"data\n", mode=0o600)

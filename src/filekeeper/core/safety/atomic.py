@@ -24,6 +24,14 @@ from .hashing import hash_bytes, hash_file
 _TEMP_PREFIX = ".keeper-tmp-"
 
 
+def _default_file_mode() -> int:
+    """The mode a plain ``open()`` would produce for a new file under this umask."""
+
+    current = os.umask(0)
+    os.umask(current)
+    return 0o666 & ~current
+
+
 def _fsync_directory(directory: Path) -> None:
     """Flush a directory entry. Unsupported on some platforms; that is not an error."""
 
@@ -79,8 +87,10 @@ def atomic_write_bytes(
             if fsync:
                 os.fsync(handle.fileno())
         effective_mode = mode if mode is not None else existing_mode
-        if effective_mode is not None:
-            os.chmod(temporary_path, effective_mode)
+        if effective_mode is None:
+            # tempfile.mkstemp creates 0600; a new file should follow the umask.
+            effective_mode = _default_file_mode()
+        os.chmod(temporary_path, effective_mode)
         os.replace(temporary_path, destination)
     except OSError as exc:
         raise StorageError(
