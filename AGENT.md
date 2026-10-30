@@ -6,7 +6,7 @@ state.
 ## What this is
 
 A local-first filesystem utility: a dependency-free Core library, a `keeper` CLI,
-and (later, as a separate distribution) an MCP server. Operations are confined to
+and an MCP server shipped as a separate distribution. Operations are confined to
 registered workspaces and whole-file writes are atomic.
 
 ## Layout
@@ -21,12 +21,13 @@ src/filekeeper/
     config.py               home resolution, limits
     database.py             SQLite connections, two forward-only migration chains
     service.py              Filekeeper (home) and FilekeeperService (workspace)
-    operations/             read, write, directory, search, edit (stub)
+    operations/             read, write, directory, search, edit
     safety/                 atomic write, hashing, text rules, refusals, VCS warning
     history/                blob store, operation journal, undo, read surfaces
   cli/                      argparse adapter: app, output, exit_codes
-packages/filekeeper-mcp/    reserved separate distribution (no server yet)
-tests/                      unit/, integration/, cli/, helpers/
+packages/filekeeper-mcp/    separate distribution: STDIO MCP server
+  src/filekeeper_mcp/       server (start-up), tools (delegation), errors, payloads
+tests/                      unit/, integration/, cli/, mcp/, helpers/
 docs/decisions.md           design choices the spec left open
 ```
 
@@ -44,6 +45,8 @@ uv run keeper --help
 
 - Dependency direction is `CLI -> Core <- MCP`. Core never imports either adapter
   and never imports anything outside the standard library; a test enforces both.
+- The MCP adapter contains no filesystem logic. It validates protocol shape and
+  delegates; path resolution, guards, limits and writes stay in Core.
 - Every path goes through `core.paths.resolve_path`. Do not add a second way to
   decide which file an operation touches.
 - Every whole-file mutation goes through `safety.atomic.atomic_write_bytes`.

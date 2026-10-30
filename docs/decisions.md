@@ -317,3 +317,49 @@ now normalises every content line to end with a newline and, when a side has no
 final newline, emits the standard `\ No newline at end of file` marker after the
 line that represents that final line. The human view, the JSON payload and the
 dry-run preview all use this one renderer, so they cannot disagree.
+
+## The MCP adapter is a separate distribution, and its SDK major is pinned
+
+The specification placed `mcp/` inside `src/filekeeper/` while also requiring Core
+to stay free of MCP SDK dependencies. Both cannot hold in one distribution: a
+single package would pull the SDK into every CLI install. The design review's
+two-distribution layout therefore wins. `filekeeper-mcp` depends on
+`filekeeper>=0.1,<0.2` and on the SDK; `filekeeper` keeps an empty dependency
+list, and a wheel-level test proves both directions.
+
+The SDK is pinned to `mcp>=2.3,<3`. Version 2.x renamed the ergonomic server class
+to `MCPServer` (from `FastMCP`) and changed how handlers and transports are
+wired, so an unpinned requirement would let a major upgrade change the API under
+a published server. The lower bound is the version the adapter was built and
+tested against, not a guess at older compatibility; the upper bound is a major
+version we have not exercised. Raising either bound is a deliberate change that
+needs the adapter tests run against the new version.
+
+## Adapter request ceilings are fixed, not caller-configurable
+
+Core's limits are configurable in `config.toml`, which is right for a single-user
+tool. A protocol server also needs a bound that one request cannot raise: a
+client that asks for a million search results must be refused before the server
+allocates for it. The adapter therefore adds its own ceilings — 32 paths in
+`file_read_many`, a 1 MiB patch, 200 search results, 1000 directory entries, 200
+history entries — and refuses excess with `LIMIT_EXCEEDED`, naming the limit and
+the actual size. These are protocol shape, not domain rules, so they live in the
+adapter; the domain limits stay in Core and are never duplicated.
+
+## Error payloads are sanitised at the adapter boundary
+
+Core's error messages are written for a local operator and may quote an operating
+system message that contains a resolved path. An MCP client is not that operator.
+The adapter keeps the stable code, the message's meaning, the `retryable` flag and
+the caller's own path, drops detail keys that only carry server-side locations,
+and replaces the workspace root, the home directory and any absolute-path token
+with `<host-path>`. A storage failure therefore still says `STORAGE_ERROR` and
+still names the path the caller asked for, without disclosing the tree the server
+is confined to.
+
+## Mutations take their audit identity from start-up configuration
+
+`actor` and `task_id` are optional server start-up options. A tool argument does
+not set them, so a caller cannot claim an identity it was not given; the fields
+stay generic audit metadata. The `history_list` filters named `actor` and
+`task_id` are queries over what was recorded, not authority to record anything.

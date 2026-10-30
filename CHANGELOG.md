@@ -9,7 +9,8 @@ All notable changes to this project are recorded here. The format follows
 ### Added
 
 - Two-distribution layout: `filekeeper` (Core + CLI, no third-party runtime
-  dependencies) and the reserved, unimplemented `filekeeper-mcp` distribution.
+  dependencies) and `filekeeper-mcp` (the MCP server, depending on
+  `filekeeper>=0.1,<0.2` and the pinned MCP SDK).
 - Workspace registration and selection, with precedence `--workspace`, `--root`,
   then the configured default. Removal never touches the workspace's files.
 - Project-local per-workspace state at `<workspace>/.filekeeper/` (opt-in global
@@ -77,6 +78,27 @@ All notable changes to this project are recorded here. The format follows
 - CLI commands `file replace-text`, `file replace-lines`, `file insert-lines`,
   `file delete-lines` and `file apply-patch`, each with `--dry-run` and `--json`,
   printing the `operation_id` and, for replacement, the matching stage.
+- MCP server (`filekeeper-mcp`) over STDIO: a thin protocol adapter with no
+  filesystem logic of its own. Start-up options `--workspace`, `--root`, `--home`,
+  `--actor`, `--task-id` and `--log-level`; the allowed root is fixed at start-up
+  and no tool argument can widen it.
+- Twenty-five MCP tools covering workspace inspection, read/info/list/search,
+  file and directory mutation, staged text and line-range editing, unified-diff
+  application, history and undo. Descriptions state the 1-based inclusive line
+  convention, the guard contract, dry-run support and undoability; every tool
+  carries accurate `readOnlyHint`, `destructiveHint`, `idempotentHint` and
+  `openWorldHint` annotations.
+- Structured MCP errors carrying the stable Core code, `retryable`, the caller's
+  path and the workspace name, with server-side host paths scrubbed and no stack
+  traces returned to clients.
+- Adapter-side request ceilings refused with `LIMIT_EXCEEDED` rather than
+  truncated: 32 paths per `file_read_many`, a 1 MiB patch, and at most 200
+  search results, 1000 directory entries or 200 history entries per request.
+- The MCP SDK is pinned to `>=2.3,<3`, the major version this server is built and
+  tested against; the pin and its reason are recorded in `docs/decisions.md`.
+- Wheel-level dependency-isolation tests: installing `filekeeper` alone neither
+  declares nor can import the MCP SDK, while installing `filekeeper-mcp` brings
+  Core, the SDK and both console scripts.
 
 ### Fixed
 
@@ -102,7 +124,7 @@ All notable changes to this project are recorded here. The format follows
 
 ### Notes
 
-- Redo, snapshots, locks, batch execution and the MCP server are not part of
-  this release.
+- Redo, snapshots, advisory locks, batch execution, file watching, HTTP
+  transport and binary/media reads are not part of this release.
 - Multi-file operations are recoverable through history, and are never atomic
   across files; single-file writes are atomic.

@@ -30,10 +30,18 @@ Changelog = "https://github.com/sangingeum/filekeeper/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
+    "anyio>=4.9",
+    "filekeeper-mcp",
     "pytest>=8.0",
     "ruff>=0.6",
     "mypy>=1.11",
 ]
+
+[tool.uv.workspace]
+members = ["packages/filekeeper-mcp"]
+
+[tool.uv.sources]
+filekeeper-mcp = { workspace = true }
 
 [build-system]
 requires = ["uv_build>=0.9.0,<0.13"]
@@ -59,7 +67,7 @@ exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedE
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["src", "tests"]
+src = ["src", "tests", "packages/filekeeper-mcp/src"]
 
 [tool.ruff.lint]
 # PTH is intentionally not enabled: atomic replacement and permission
@@ -72,6 +80,6 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "RET", "RUF"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-files = ["src"]
+files = ["src", "packages/filekeeper-mcp/src"]
 warn_unreachable = true
 show_error_codes = true

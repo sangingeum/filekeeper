@@ -1,8 +1,8 @@
 # Filekeeper
 
 Safe, predictable filesystem operations for humans, shell scripts and AI agents.
-One Core library, a `keeper` command line, and (later) an MCP server that all
-behave identically because they call the same code.
+One Core library, a `keeper` command line, and an MCP server that all behave
+identically because they call the same code.
 
 Filekeeper confines every operation to a registered **workspace**, replaces whole
 files atomically, refuses credential-shaped write targets, and reports structured
@@ -15,7 +15,7 @@ includes workspace registration and confinement, read/info/hash/list/search,
 file and directory create/copy/move/delete, atomic whole-file replacement, text
 detection and size limits, durable operation history with content-addressed
 blobs, safe undo with conflict detection, staged literal text editing,
-line-range editing, unified-diff application, and the CLI.
+line-range editing, unified-diff application, the CLI, and the MCP server.
 
 Not in this release, and deliberately so:
 
@@ -23,7 +23,6 @@ Not in this release, and deliberately so:
   recorded, but `redo` itself is not implemented
 - explicit snapshots and restore (history blobs already hold the data)
 - advisory locks with TTL (the tables exist; the API does not)
-- the MCP server (`filekeeper-mcp` is a reserved, separate distribution)
 - batch execution, file watching, archives, history pruning UI, HTTP transport
 
 ## Install
@@ -34,7 +33,13 @@ keeper --help
 ```
 
 Requires Python 3.11 to 3.13. The published `filekeeper` package has **no
-third-party dependencies**.
+third-party dependencies**. The MCP server is a separate distribution, so
+installing the CLI never pulls in the MCP SDK:
+
+```bash
+uv tool install filekeeper-mcp   # Core + CLI + MCP server
+filekeeper-mcp --root ~/project
+```
 
 ## Quick start
 
@@ -52,6 +57,54 @@ Every command accepts `--json` for machine-readable output and `--workspace NAME
 or `--root PATH` to select a workspace. Selection precedence is explicit
 `--workspace`, then explicit `--root`, then the configured default; Filekeeper
 never guesses when several workspaces exist.
+
+## MCP server
+
+`filekeeper-mcp` speaks the Model Context Protocol over STDIO. It is a thin
+adapter over Core: no filesystem behaviour lives in it, so a guarded write or a
+refusal is identical whichever adapter issued it.
+
+```bash
+filekeeper-mcp --workspace notes
+filekeeper-mcp --root ~/work/tree --home ~/.local/share/filekeeper
+```
+
+`--workspace` and `--root` are mutually exclusive; `--home` overrides
+`FILEKEEPER_HOME`; `--log-level` controls stderr only, because stdout carries
+protocol messages. `--actor` and `--task-id` are optional audit metadata recorded
+on every mutation. There is no network listener in this release.
+
+The allowed roots come from start-up configuration only. No tool argument can
+widen them, register a workspace or point the server at another tree.
+
+### Tools
+
+Read-only: `workspace_list`, `workspace_info`, `file_read`, `file_read_many`,
+`directory_list`, `file_info`, `file_search`, `content_search`, `history_list`,
+`history_get`, `history_diff`.
+
+Mutating: `file_create`, `file_write`, `file_copy`, `file_move`, `file_delete`,
+`directory_create`, `directory_delete`, `file_replace_text`,
+`file_replace_lines`, `file_insert_lines`, `file_delete_lines`,
+`file_apply_patch`, `undo_operation`, `undo_last`.
+
+The same conventions apply as in the CLI: workspace-relative paths, 1-based
+inclusive line numbers, `expected_hash` / `expected_content` guards, `dry_run` on
+every mutation, and `operation_id` / `undo_available` on every mutation. Each
+tool's description states its own semantics, and each carries protocol
+annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`,
+`openWorldHint`) that describe what it actually does.
+
+Requests that could exhaust memory are refused with `LIMIT_EXCEEDED`, not
+truncated: 32 paths per `file_read_many`, a 1 MiB patch, and at most 200 search
+results, 1000 directory entries or 200 history entries per request. Errors are
+structured data carrying the stable Core code, `retryable`, the caller's path and
+the workspace name, with no stack trace and no host path.
+
+A tool that mutates returns the Core `operation_id` and `undo_available` exactly
+as the CLI does, so `history_list`, `history_diff` and `undo_operation` work the
+same way from an agent host. The optional audit field is `task_id`; it is
+supplied by server configuration rather than trusted from a tool argument.
 
 ## Where state lives
 
@@ -386,8 +439,8 @@ service.undo_last(actor="editor")
 ```
 
 Core imports only the Python standard library. `packages/filekeeper-mcp/` is a
-separate, currently unimplemented distribution so that installing the CLI never
-pulls in the MCP SDK.
+separate distribution so that installing the CLI never pulls in the MCP SDK; it
+ships the STDIO server described above.
 
 ## Development
 
