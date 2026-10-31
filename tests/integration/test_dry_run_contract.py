@@ -70,6 +70,33 @@ def test_dry_run_write_reports_would_change_false_for_identical_content(
     assert result.predicted_after_hash == result.before_hash
 
 
+def test_dry_run_identical_content_never_claims_an_item_change(service) -> None:
+    """A preview whose operation-level verdict is "nothing" must agree with itself.
+
+    ``would_change`` is false for identical content, so no item in the same
+    payload may report that it would be modified: an agent reading the item list
+    would otherwise act on a change that will not happen.
+    """
+
+    result = service.write_file("notes.txt", "alpha\nbeta\ngamma\n", dry_run=True)
+
+    assert result.would_change is False
+    assert result.changed is False
+    assert result.items, "the preview still names the path it inspected"
+    for item in result.items:
+        assert item.change == "unchanged"
+        assert item.predicted_after_hash == result.predicted_after_hash
+
+
+def test_a_would_change_preview_still_names_the_item_change(service) -> None:
+    """The consistency rule only applies when nothing would change."""
+
+    result = service.write_file("notes.txt", "different\n", dry_run=True)
+
+    assert result.would_change is True
+    assert [item.change for item in result.items] == ["modified"]
+
+
 def test_dry_run_replace_text_reports_no_change_and_keeps_its_preview(
     service, workspace_root: Path
 ) -> None:

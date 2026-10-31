@@ -367,12 +367,42 @@ def test_a_refused_undo_leaves_a_record_that_is_not_undoable(service) -> None:
     assert undone.summary == f"Undid operation {moved.operation_id}."
     assert (service.root / "copied.txt").is_file()
 
-    # An explicit undo of the refusal row is refused too, not executed.
+    # An explicit undo of the refusal row is refused too, not executed. That
+    # second refusal is not new evidence: the first row already states the
+    # conflict and that nothing changed, so no second refusal row is written.
     with pytest.raises(UndoConflictError):
         service.undo(refusal.operation_id)
     assert [record.operation_type for record in service.list_history()].count(
         "undo_refused"
-    ) == 2
+    ) == 1
+
+
+def test_undoing_a_refusal_record_writes_no_second_refusal_row(service) -> None:
+    """A refusal of a refusal is not new evidence, so it adds no ledger row.
+
+    The coded error is unchanged; only the duplicate record is suppressed. A
+    refusal of a real operation still records, which the test above proves.
+    """
+
+    copied = service.copy_file("notes.txt", "copied.txt")
+    service.move_file("copied.txt", "copied-renamed.txt")
+
+    with pytest.raises(UndoConflictError) as first:
+        service.undo(copied.operation_id)
+    refusal_rows = [
+        record for record in service.list_history() if record.operation_type == "undo_refused"
+    ]
+    assert len(refusal_rows) == 1
+    refusal_id = refusal_rows[0].operation_id
+
+    rows_before = len(service.list_history())
+    with pytest.raises(UndoConflictError) as second:
+        service.undo(refusal_id)
+
+    assert second.value.code == "UNDO_CONFLICT"
+    assert second.value.message == "operation did not take effect; there is nothing to undo"
+    assert len(service.list_history()) == rows_before
+    assert first.value.code == "UNDO_CONFLICT"
 
 
 def test_an_old_format_journal_row_still_reads_and_undoes(service) -> None:

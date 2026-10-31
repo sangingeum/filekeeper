@@ -316,7 +316,31 @@ def as_dry_run(
     or item size, no operation id and nothing undoable. The prediction a caller
     may legitimately want survives as ``predicted_after_hash`` on the result,
     each item and each patch file.
+
+    Item ``change`` values agree with ``would_change``: a preview that would
+    alter nothing reports every item as ``"unchanged"``, so the item list never
+    contradicts the operation-level verdict. The item stays in the list, because
+    callers use it to map a preview to the paths it inspected.
     """
+
+    items: list[OperationItemResult] = []
+    for item in result.items:
+        change: Literal["created", "modified", "deleted", "moved", "unchanged"] = (
+            item.change if would_change else "unchanged"
+        )
+        items.append(
+            replace(
+                item,
+                change=change,
+                after_hash=None,
+                size_bytes=None,
+                predicted_after_hash=(
+                    item.predicted_after_hash
+                    if item.predicted_after_hash is not None
+                    else item.after_hash
+                ),
+            )
+        )
 
     return replace(
         result,
@@ -326,19 +350,7 @@ def as_dry_run(
         undo_available=False,
         would_change=would_change,
         predicted_after_hash=predicted_after_hash,
-        items=tuple(
-            replace(
-                item,
-                after_hash=None,
-                size_bytes=None,
-                predicted_after_hash=(
-                    item.predicted_after_hash
-                    if item.predicted_after_hash is not None
-                    else item.after_hash
-                ),
-            )
-            for item in result.items
-        ),
+        items=tuple(items),
         patch_files=tuple(
             replace(
                 patch_file,

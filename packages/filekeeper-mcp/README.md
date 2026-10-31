@@ -57,6 +57,9 @@ Read-only:
 `directory_list`, `file_info`, `file_search`, `content_search`, `history_list`,
 `history_get`, `history_diff`.
 
+`workspace_info` also returns the server's own package `version`, so a host can
+record which build it measured without running `filekeeper-mcp --version`.
+
 Mutating:
 
 `file_create`, `file_write`, `file_copy`, `file_move`, `file_delete`,

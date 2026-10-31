@@ -366,7 +366,12 @@ def undo_operation(
     try:
         steps = _plan(journal, record)
     except UndoConflictError as exc:
-        _record_refusal(journal, record, exc, actor=actor, task_id=task_id)
+        # A refusal of another refusal adds nothing: the first row already
+        # records that this conflict was seen and nothing changed. Journalling
+        # the repeat would be noise, not new evidence, so only a refusal of a
+        # real operation is recorded.
+        if record.operation_type != UNDO_REFUSED:
+            _record_refusal(journal, record, exc, actor=actor, task_id=task_id)
         raise
     undo_items = _undo_items(record)
 

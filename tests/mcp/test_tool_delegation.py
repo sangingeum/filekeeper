@@ -191,6 +191,32 @@ def test_every_mutation_and_edit_tool_delegates_with_undo_metadata(
     assert (target.root / "notes.txt").read_text(encoding="utf-8") == "ALPHA\nBETA\nGAMMA\n"
 
 
+def test_workspace_info_reports_the_package_version(target: ServerTarget) -> None:
+    """The version is readable over MCP and matches the built package version.
+
+    The expectation comes from the distribution metadata (the single source of
+    truth a release bumps), never from a literal in the test.
+    """
+
+    import tomllib
+
+    pyproject = (
+        Path(__file__).resolve().parents[2]
+        / "packages"
+        / "filekeeper-mcp"
+        / "pyproject.toml"
+    )
+    with pyproject.open("rb") as handle:
+        expected = str(tomllib.load(handle)["project"]["version"])
+
+    result = exercise(target, [("workspace_info", {})])
+    payload = result.by_name("workspace_info").structured
+
+    assert payload["ok"] is True
+    assert payload["version"] == expected
+    assert payload["selected"] == "workspace"
+
+
 def test_workspace_list_reports_a_registered_workspace(tmp_path: Path) -> None:
     from harness import ServerTarget
 

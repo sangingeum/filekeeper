@@ -25,6 +25,7 @@ from filekeeper.core.errors import (
     ValidationError,
 )
 
+from . import __version__
 from .errors import error_result, internal_error_result
 from .payloads import jsonable, success_payload, tool_result
 
@@ -265,6 +266,8 @@ class FilekeeperTools:
 
         Read-only. Reports the workspace name, identifier, registered root and
         whether the selection is a transient --root rather than a registration.
+        It also reports the server's own package ``version``, so a caller can
+        record which build it measured without running the binary.
         It does not create, select or modify a workspace.
         """
 
@@ -275,6 +278,7 @@ class FilekeeperTools:
                 is_default = app.registry.get_default_name() == record.name
                 return {
                     "ok": True,
+                    "version": __version__,
                     "workspace": jsonable(record),
                     "selected": self.selection.selected_name(),
                     "default": is_default,
@@ -284,6 +288,7 @@ class FilekeeperTools:
             handle = service.handle
             return {
                 "ok": True,
+                "version": __version__,
                 "selected": service.name,
                 "workspace": {
                     "name": service.name,

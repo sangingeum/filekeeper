@@ -312,7 +312,10 @@ meaning — the path the operation targets — so existing readers are unaffecte
 A refused undo is recorded too: the ledger gains an `undo_refused` row with the
 target path, the conflict code, and the paths that blocked the undo. It changed
 nothing, so it carries no items, is never offered as undoable, and `undo-last`
-skips it. Every recorded path is workspace-relative, never a resolved host path.
+skips it. A refusal of a refusal is the one exception: undoing that
+`undo_refused` row is refused with the same coded error, but writes no second row,
+because the existing row already states the conflict. Every recorded path is
+workspace-relative, never a resolved host path.
 
 `keeper file read` writes file content to standard output unchanged (line endings
 included). Metadata goes to stderr, or into the JSON object with `--json`.
@@ -385,6 +388,13 @@ observation — and `would_change` says whether a real run would alter anything.
 preview was computed against. The same shape applies to every mutating command and
 to the MCP tools that mirror them. A committed operation still reports
 `"changed": true` with its observed `after_hash`.
+
+`changed` and `would_change` answer different questions: `would_change` asks
+whether the bytes would differ, while `changed` records whether an operation
+executed and was journalled — so a real write of identical content reports
+`"changed": true` and adds a history row, which callers may rely on as proof a
+write completed. In a preview the two cannot disagree: when `would_change` is
+false, every item reports `"unchanged"`.
 
 Editing results add `match_stage` and `match_count` (text replacement),
 `preview_diff` (dry run), and, for patches, `patch_files` with per-hunk status.
