@@ -176,7 +176,7 @@ wheels = [
 
 [[package]]
 name = "filekeeper-cli"
-version = "0.1.6"
+version = "0.1.7"
 source = { editable = "." }
 
 [package.dev-dependencies]
@@ -201,7 +201,7 @@ dev = [
 
 [[package]]
 name = "filekeeper-mcp"
-version = "0.1.6"
+version = "0.1.7"
 source = { editable = "packages/filekeeper-mcp" }
 dependencies = [
     { name = "filekeeper-cli" },

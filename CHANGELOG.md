@@ -4,6 +4,29 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.7 — 2026-10-31
+
+### Fixed
+
+- A preview no longer contradicts itself. When a write would change nothing,
+  every item it returns now says `unchanged` rather than `modified`, so the item
+  list agrees with the operation-level verdict instead of describing a change
+  the preview just said would not happen.
+- Undoing a refused undo no longer writes another refusal row. The coded error
+  and exit code are unchanged; the journal simply stops growing when a caller
+  retries an undo that was already refused.
+
+### Added
+
+- The MCP server reports its own package version through `workspace_info`, so a
+  caller can record which build it measured without running the binary.
+
+### Changed
+
+- The README now states the distinction between `changed` and `would_change`
+  where the response fields are documented: `changed` says an operation executed
+  and was journalled, `would_change` says the bytes would differ.
+
 ## 0.1.6 — 2026-10-31
 
 ### Fixed
