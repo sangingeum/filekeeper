@@ -49,6 +49,7 @@ from ..models import (
     OperationItemResult,
     PatchFileResult,
     PatchHunkResult,
+    as_dry_run,
 )
 from ..paths import ResolvedPath, ensure_parent_directory, resolve_path
 from ..safety.atomic import atomic_write_bytes, fsync_directory
@@ -1120,19 +1121,23 @@ def apply_patch(
     )
 
     if dry_run:
-        return MutationResult(
-            workspace=handle.name,
-            path=primary.relative,
-            changed=True,
-            before_hash=primary.before_hash,
-            after_hash=primary.after_hash,
-            summary=f"Would apply a patch touching {file_count} file(s).",
-            dry_run=True,
-            warnings=tuple(warnings),
-            items=item_results,
-            affected_count=file_count,
-            preview_diff=patch_text,
-            patch_files=file_results,
+        return as_dry_run(
+            MutationResult(
+                workspace=handle.name,
+                path=primary.relative,
+                changed=True,
+                before_hash=primary.before_hash,
+                after_hash=primary.after_hash,
+                summary=f"Would apply a patch touching {file_count} file(s).",
+                dry_run=True,
+                warnings=tuple(warnings),
+                items=item_results,
+                affected_count=file_count,
+                preview_diff=patch_text,
+                patch_files=file_results,
+            ),
+            would_change=True,
+            predicted_after_hash=primary.after_hash,
         )
 
     pending = [

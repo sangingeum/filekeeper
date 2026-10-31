@@ -9,7 +9,7 @@ Hashes are SHA-256 and are formatted as ``sha256:<64 hex characters>``.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any, Literal
 
 EntryKind = Literal["file", "directory", "symlink", "other"]
@@ -153,6 +153,10 @@ class OperationItemResult:
 
     ``operation_item_id`` is reserved for the history layer; it is ``None`` in
     releases that do not record history.
+
+    ``after_hash`` and ``size_bytes`` describe observed state: on a dry run they
+    are ``None`` because nothing was written. A dry run puts the predicted digest
+    in ``predicted_after_hash`` instead.
     """
 
     path: str
@@ -160,6 +164,7 @@ class OperationItemResult:
     before_hash: str | None = None
     after_hash: str | None = None
     size_bytes: int | None = None
+    predicted_after_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,7 +241,11 @@ class PatchHunkResult:
 
 @dataclass(frozen=True, slots=True)
 class PatchFileResult:
-    """One path affected by :func:`apply_patch`, with its per-hunk outcomes."""
+    """One path affected by :func:`apply_patch`, with its per-hunk outcomes.
+
+    ``applied`` is ``False`` for a dry run, and ``after_hash`` is then ``None``;
+    the predicted digest is carried by ``predicted_after_hash``.
+    """
 
     path: str
     change: Literal["created", "modified", "deleted", "unchanged"]
@@ -244,6 +253,7 @@ class PatchFileResult:
     before_hash: str | None
     after_hash: str | None
     hunks: tuple[PatchHunkResult, ...] = ()
+    predicted_after_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,6 +270,12 @@ class MutationResult:
     ``preview_diff`` carries a dry-run unified diff. ``patch_files`` describes a
     patch application; a recovered failure reports what was rolled back in the
     error details.
+
+    A dry run reports what was *observed* and what *would* happen, never what
+    happened: ``changed`` is ``False``, ``after_hash`` is ``None``, and no
+    operation is recorded. ``would_change`` says whether a real run would alter
+    anything, and ``predicted_after_hash`` carries the digest the content would
+    have -- a prediction, never an observation.
     """
 
     workspace: str
@@ -271,6 +287,8 @@ class MutationResult:
     operation_id: str | None = None
     undo_available: bool = False
     dry_run: bool = False
+    would_change: bool | None = None
+    predicted_after_hash: str | None = None
     warnings: tuple[str, ...] = ()
     items: tuple[OperationItemResult, ...] = ()
     affected_count: int | None = None
@@ -285,9 +303,65 @@ class MutationResult:
         return payload
 
 
+def as_dry_run(
+    result: MutationResult,
+    *,
+    would_change: bool,
+    predicted_after_hash: str | None = None,
+) -> MutationResult:
+    """Return the honest shape of a dry run for ``result``.
+
+    This is the single place the dry-run contract is applied: nothing was
+    written, so the result reports ``changed=False``, no observed ``after_hash``
+    or item size, no operation id and nothing undoable. The prediction a caller
+    may legitimately want survives as ``predicted_after_hash`` on the result,
+    each item and each patch file.
+    """
+
+    return replace(
+        result,
+        changed=False,
+        after_hash=None,
+        operation_id=None,
+        undo_available=False,
+        would_change=would_change,
+        predicted_after_hash=predicted_after_hash,
+        items=tuple(
+            replace(
+                item,
+                after_hash=None,
+                size_bytes=None,
+                predicted_after_hash=(
+                    item.predicted_after_hash
+                    if item.predicted_after_hash is not None
+                    else item.after_hash
+                ),
+            )
+            for item in result.items
+        ),
+        patch_files=tuple(
+            replace(
+                patch_file,
+                applied=False,
+                after_hash=None,
+                predicted_after_hash=(
+                    patch_file.predicted_after_hash
+                    if patch_file.predicted_after_hash is not None
+                    else patch_file.after_hash
+                ),
+            )
+            for patch_file in result.patch_files
+        ),
+    )
+
+
 def _jsonable(value: Any) -> Any:
     if isinstance(value, dict):
-        return {key: _jsonable(item) for key, item in value.items()}
+        return {
+            key: _jsonable(item)
+            for key, item in value.items()
+            if not (item is None and key in {"would_change", "predicted_after_hash"})
+        }
     if isinstance(value, (list, tuple)):
         return [_jsonable(item) for item in value]
     return value

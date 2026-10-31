@@ -235,5 +235,5 @@ def test_dry_run_changes_nothing(service) -> None:
     assert (service.root / "notes.txt").read_text(encoding="utf-8") == "alpha\nbeta\ngamma\n"
 
     dry = service.delete_file("notes.txt", dry_run=True)
-    assert dry.changed is True
+    assert dry.changed is False
     assert (service.root / "notes.txt").exists()

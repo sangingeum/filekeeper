@@ -25,7 +25,7 @@ from ..errors import (
     NotADirectoryError as FilekeeperNotADirectoryError,
 )
 from ..history.journal import OperationJournal, PendingItem
-from ..models import MutationResult, OperationItemResult
+from ..models import MutationResult, OperationItemResult, as_dry_run
 from ..paths import ensure_parent_directory, resolve_path
 from ..safety.atomic import fsync_directory
 from ..safety.hashing import hash_file
@@ -151,7 +151,7 @@ def create_directory(
         if journal is not None and operation_id is not None:
             journal.commit(operation_id)
 
-    return MutationResult(
+    result = MutationResult(
         workspace=handle.name,
         path=resolved.relative,
         changed=True,
@@ -164,6 +164,9 @@ def create_directory(
         items=(OperationItemResult(path=resolved.relative, change="created"),),
         affected_count=1,
     )
+    if dry_run:
+        return as_dry_run(result, would_change=True)
+    return result
 
 
 def _umask() -> int:
@@ -310,7 +313,7 @@ def move_directory(
             },
         ) from exc
 
-    return MutationResult(
+    result = MutationResult(
         workspace=handle.name,
         path=destination_resolved.relative,
         changed=True,
@@ -330,6 +333,9 @@ def move_directory(
         affected_count=1,
         history_skipped=tuple(sorted(set(skipped))),
     )
+    if dry_run:
+        return as_dry_run(result, would_change=True)
+    return result
 
 
 def _count_entries(root: Path) -> int:
@@ -448,7 +454,7 @@ def delete_directory(
         if journal is not None and operation_id is not None:
             journal.commit(operation_id)
 
-    return MutationResult(
+    result = MutationResult(
         workspace=handle.name,
         path=resolved.relative,
         changed=True,
@@ -473,3 +479,6 @@ def delete_directory(
         else warnings,
         history_skipped=skipped,
     )
+    if dry_run:
+        return as_dry_run(result, would_change=True)
+    return result

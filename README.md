@@ -360,6 +360,16 @@ re-reads the file and writes against its new hash.
 so its previous bytes were deliberately not stored; `history_skipped` then names
 the paths.
 
+**A dry run reports a preview, not a write.** With `"dry_run": true`, `changed` is
+`false`, `operation_id` and `after_hash` are `null`, and each item's `after_hash`
+and `size_bytes` are `null`: nothing was observed, so nothing is claimed. The hash
+a real run would produce appears as `predicted_after_hash` — a prediction, never an
+observation — and `would_change` says whether a real run would alter anything.
+`before_hash` and `preview_diff` are kept, because they describe the state the
+preview was computed against. The same shape applies to every mutating command and
+to the MCP tools that mirror them. A committed operation still reports
+`"changed": true` with its observed `after_hash`.
+
 Editing results add `match_stage` and `match_count` (text replacement),
 `preview_diff` (dry run), and, for patches, `patch_files` with per-hunk status.
 A failure that was rolled back reports the restored paths in the error details.

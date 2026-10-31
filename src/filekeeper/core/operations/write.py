@@ -35,7 +35,7 @@ from ..errors import (
     storage_failure,
 )
 from ..history.journal import OperationJournal, PendingItem
-from ..models import MutationResult, OperationItemResult
+from ..models import MutationResult, OperationItemResult, as_dry_run
 from ..paths import ResolvedPath, ensure_parent_directory, resolve_path
 from ..safety.atomic import atomic_write_bytes, fsync_directory
 from ..safety.hashing import format_digest, hash_bytes, hash_file, hashes_match, normalize_hash
@@ -197,7 +197,7 @@ def _after_write(
             journal.commit(operation_id)
             undo_available = not skipped
 
-    return MutationResult(
+    result = MutationResult(
         workspace=handle.name,
         path=resolved.relative,
         changed=True,
@@ -222,6 +222,13 @@ def _after_write(
         affected_count=1,
         history_skipped=skipped,
     )
+    if dry_run:
+        return as_dry_run(
+            result,
+            would_change=not before_exists or before_hash != after_hash,
+            predicted_after_hash=after_hash,
+        )
+    return result
 
 
 def create_file(
@@ -454,7 +461,8 @@ def copy_file(
         after_hash=hash_bytes(data),
         size_bytes=len(data),
     )
-    return MutationResult(
+    predicted_after_hash = result.predicted_after_hash
+    result = MutationResult(
         workspace=result.workspace,
         path=result.path,
         changed=True,
@@ -472,6 +480,13 @@ def copy_file(
         affected_count=1,
         history_skipped=result.history_skipped,
     )
+    if dry_run:
+        return as_dry_run(
+            result,
+            would_change=True,
+            predicted_after_hash=predicted_after_hash,
+        )
+    return result
 
 
 def move_file(
@@ -612,7 +627,7 @@ def move_file(
     else:
         after_hash = source_hash
 
-    return MutationResult(
+    result = MutationResult(
         workspace=handle.name,
         path=destination_resolved.relative,
         changed=True,
@@ -643,6 +658,13 @@ def move_file(
         affected_count=1,
         history_skipped=skipped,
     )
+    if dry_run:
+        return as_dry_run(
+            result,
+            would_change=True,
+            predicted_after_hash=after_hash,
+        )
+    return result
 
 
 def delete_file(
@@ -725,7 +747,7 @@ def delete_file(
         if journal is not None and operation_id is not None:
             journal.commit(operation_id)
 
-    return MutationResult(
+    result = MutationResult(
         workspace=handle.name,
         path=resolved.relative,
         changed=True,
@@ -746,6 +768,9 @@ def delete_file(
         affected_count=1,
         history_skipped=skipped,
     )
+    if dry_run:
+        return as_dry_run(result, would_change=True, predicted_after_hash=None)
+    return result
 
 
 # Re-exported for adapters that need to format a hash without importing safety.

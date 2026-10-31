@@ -128,6 +128,20 @@ mutation would do is cheap, useful and keeps the result shape identical. Dry run
 validate every guard (confinement, sensitive paths, expected hashes, size limits,
 directory preconditions) and then stop before touching the filesystem.
 
+## A dry run never reports as though it wrote
+
+A preview exists to prevent mistakes, so it must not read like a completed write.
+`changed` and `after_hash` describe observed results: a dry run sets `changed` to
+`false`, leaves `operation_id` and `after_hash` null, and drops `size_bytes` from
+its items. The digest a real run would produce survives as
+`predicted_after_hash`, a name that cannot be mistaken for an observation, and
+`would_change` states whether a real run would alter anything. `before_hash` and
+`preview_diff` stay, because they describe the state the preview was computed
+against. The same contract applies to every mutating surface — files, text edits,
+patches and directories — and is applied in one place, `as_dry_run` in
+`core/models.py`. A committed operation still reports `changed: true` with its
+observed `after_hash`.
+
 ## Exit code 10 for credential refusal
 
 Codes 0–9 were proposed in the specification, with 7 and 8 reserved for patch and
