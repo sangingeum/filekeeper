@@ -26,7 +26,7 @@ from filekeeper.core.errors import (
 )
 
 from .errors import error_result, internal_error_result
-from .payloads import compact_json, jsonable, success_payload
+from .payloads import jsonable, success_payload, tool_result
 
 logger = logging.getLogger(__name__)
 
@@ -116,10 +116,7 @@ def _check_size(parameter: str, text: str, maximum: int) -> None:
 
 
 def _ok(payload: dict[str, Any]) -> types.CallToolResult:
-    return types.CallToolResult(
-        content=[types.TextContent(type="text", text=compact_json(payload))],
-        structured_content=payload,
-    )
+    return tool_result(payload)
 
 
 def _attach_state_warning(payload: dict[str, Any], service: FilekeeperService) -> None:

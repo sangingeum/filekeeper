@@ -30,7 +30,7 @@ import mcp.types as types
 
 from filekeeper import ErrorCode, FilekeeperError
 
-from .payloads import compact_json
+from .payloads import tool_result
 
 # Path-like strings that begin a token. Relative paths such as ``src/main.py`` are
 # left alone because the character before the slash is part of a word.
@@ -113,11 +113,7 @@ def error_result(
     caller_path: str | None = None,
 ) -> types.CallToolResult:
     payload = error_payload(error, host_paths=host_paths, caller_path=caller_path)
-    return types.CallToolResult(
-        content=[types.TextContent(type="text", text=compact_json(payload))],
-        structured_content=payload,
-        is_error=True,
-    )
+    return tool_result(payload, is_error=True)
 
 
 def internal_error_result() -> types.CallToolResult:

@@ -561,10 +561,11 @@ checked.
 The trial also asked for unbounded `directory_list`/`file_search` payloads, a
 last-N-lines read, rename-plus-edit, patches that create or delete files, a
 single copy of the payload in `content[0].text` and `structuredContent`, and
-context lines in `content_search`. None is fixed in 0.1.3. The duplicated
-envelope is **accepted**: `structuredContent` is the protocol's structured
-channel and the text block is what older hosts read, so keeping both is
-compatible behaviour, not an oversight. The rest are **deferred**: bounding and
+context lines in `content_search`. None was fixed in 0.1.3. The duplicated
+envelope was **accepted** then: `structuredContent` is the protocol's structured
+channel and the text block was what older hosts read. It is now **fixed**: a
+result carries the payload once, in `structuredContent`, with no text mirror, so
+a call no longer pays for the same object twice. The rest are **deferred**: bounding and
 paging listings needs a cursor or limit contract across CLI and MCP; last-N-lines
 needs an end-relative range that does not conflict with "out-of-range is refused";
 rename-plus-edit and file-creating/deleting patches are new operation shapes with

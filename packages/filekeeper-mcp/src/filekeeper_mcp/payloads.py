@@ -3,15 +3,21 @@
 Rendering only: nothing here reads, resolves or writes a filesystem path. The
 shapes deliberately mirror the Core dataclasses field for field, so a client sees
 exactly what the library returned.
+
+A tool result carries its payload once. ``structured_content`` is the protocol's
+structured channel and the contract; the older convention of mirroring the same
+object into a ``TextContent`` block doubled the bytes of every result without
+adding information, so no text copy is emitted.
 """
 
 from __future__ import annotations
 
 import dataclasses
-import json
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+import mcp.types as types
 
 
 def jsonable(value: Any) -> Any:
@@ -45,11 +51,16 @@ def success_payload(result: Any) -> dict[str, Any]:
     return payload
 
 
-def compact_json(payload: dict[str, Any]) -> str:
-    """The text content that accompanies structured content.
+def tool_result(payload: dict[str, Any], *, is_error: bool = False) -> types.CallToolResult:
+    """Build a result carrying the payload once, in the structured channel.
 
-    Kept compact on purpose: the structured payload is the contract, and this is
-    the fallback for hosts that only render text.
+    No text mirror is emitted. The object is the contract; every client in this
+    tree reads ``structured_content``, and the duplicate doubled the bytes of
+    every result.
     """
 
-    return json.dumps(jsonable(payload), ensure_ascii=False, separators=(",", ":"))
+    return types.CallToolResult(
+        content=[],
+        structured_content=payload,
+        is_error=is_error,
+    )
