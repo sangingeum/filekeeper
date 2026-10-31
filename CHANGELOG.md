@@ -4,6 +4,28 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.2 — 2026-10-31
+
+### Added
+
+- A tool-annotation regression test for the MCP server. It spawns the server over
+  STDIO, completes the `initialize` handshake and reads `tools/list`, then asserts
+  for every tool that an `annotations` object is present, that all four protocol
+  hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`)
+  arrived as explicit JSON booleans, and that `readOnlyHint` and `destructiveHint`
+  never contradict each other. The exact tool count is pinned at twenty-five, and
+  each tool's values are pinned against its handler, so a tool added without an
+  annotation — the shape directory reviewers reject — fails the suite.
+
+### Changed
+
+- `filekeeper-cli` 0.1.2 and `filekeeper-mcp` 0.1.2 are released together and now
+  carry the same version number. Code, metadata and behaviour are unchanged from
+  `filekeeper-cli` 0.1.1.
+- `filekeeper-mcp` 0.1.2 is the server's first published version. The project was
+  never released at 0.1.0; that version string existed only in the working tree,
+  so no release history is missing and no version number was reused.
+
 ## 0.1.1 — 2026-10-31
 
 ### Changed
