@@ -24,6 +24,38 @@ def _assert_clean(reply: ToolReply, target: ServerTarget) -> None:
     assert str(target.home) not in rendered
     assert ".filekeeper" not in rendered
     assert str(target.root) not in reply.text
+    assert str(target.home) not in reply.text
+    assert ".filekeeper" not in reply.text
+
+
+def test_an_error_reaches_a_text_only_client_with_the_same_code_and_message(
+    target: ServerTarget,
+) -> None:
+    """A client that reads only text blocks still sees the coded error.
+
+    The text fallback is parsed and compared with the structured channel: the
+    code, message and details must be identical, so a client reading either
+    channel acts on the same error.
+    """
+
+    result = exercise(
+        target,
+        [
+            ("file_read", {"path": "absent.txt"}),
+            (
+                "file_write",
+                {"path": "notes.txt", "content": "replaced\n", "expected_hash": FAKE_HASH},
+            ),
+        ],
+    )
+
+    for reply in result.replies:
+        assert reply.text, f"{reply.name} carried no text fallback"
+        fallback = json.loads(reply.text)
+        assert fallback == reply.structured
+        assert fallback["error"]["code"] == reply.structured["error"]["code"]
+        assert fallback["error"]["message"] == reply.structured["error"]["message"]
+        _assert_clean(reply, target)
 
 
 def test_a_stale_hash_is_not_retryable_and_names_the_recovery_path(

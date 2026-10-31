@@ -171,11 +171,13 @@ def _plan(journal: OperationJournal, record: OperationRecord) -> list[_Step]:
             details={"operation_id": record.operation_id, "status": record.status},
         )
     if not steps:
-        # Nothing matched the operation's result, so there is nothing to put
-        # back. Reporting success here would claim a change that never happened.
+        # Every item already holds its pre-operation state, which for a committed
+        # operation means the write left the content unchanged. There is nothing
+        # to restore, and reporting success would claim a change that never
+        # happened.
         raise UndoConflictError(
-            "cannot undo: no recorded target still matches the operation's result, "
-            "so nothing was modified",
+            "cannot undo: the operation left its target in the pre-operation state, "
+            "so undoing it would change nothing",
             details={"operation_id": record.operation_id},
         )
     return steps

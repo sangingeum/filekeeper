@@ -20,7 +20,7 @@ import pytest
 from harness import ServerTarget, exercise
 
 from filekeeper.core.errors import PathNotFoundError
-from filekeeper_mcp.errors import error_payload, scrub_text
+from filekeeper_mcp.errors import error_payload, error_result, scrub_text
 
 
 def test_a_root_at_slash_keeps_a_relative_path_intact() -> None:
@@ -79,6 +79,22 @@ def test_a_relative_state_directory_stays_readable_in_details() -> None:
     details = payload["error"]["details"]
     assert details["state_dir"] == ".filekeeper"
     assert details["operation_id"] == "op-1"
+
+
+def test_the_error_text_fallback_is_scrubbed_exactly_like_the_structured_payload() -> None:
+    from filekeeper.core.errors import StorageError
+
+    error = StorageError(
+        "cannot read /srv/state/ws-transient-abc/notes.txt",
+        details={"state_dir": "/srv/state/ws-transient-abc"},
+    )
+
+    result = error_result(error, host_paths=("/srv/state",))
+    fallback = json.loads(result.content[0].text)  # type: ignore[union-attr]
+
+    assert fallback == result.structured_content
+    assert "/srv/state" not in result.content[0].text  # type: ignore[union-attr]
+    assert fallback["error"]["details"]["state_dir"] == "<host-path>/ws-transient-abc"
 
 
 def test_a_wrong_argument_name_is_a_coded_error(target: ServerTarget) -> None:
