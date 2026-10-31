@@ -4,6 +4,40 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.5 — 2026-10-31
+
+### Fixed
+
+- Undo no longer reports success when it changed nothing. A committed operation
+  leaves every affected path in its post-operation state, so an undo whose
+  recorded target no longer matches that state means the path was edited, deleted
+  or renamed away — not that the undo had already run. It now refuses with
+  `UNDO_CONFLICT`, exit code 12 on the CLI, and names the conflicting paths
+  relative to the caller's root, instead of returning `ok: true` with an empty
+  item list. An agent that retried an undo on a stale operation id gets a code it
+  can branch on rather than a false confirmation. The same refusal covers an
+  identical-content committed write: undoing it would change nothing, so the
+  message now says the target already holds its pre-operation state.
+- An MCP tool result is now one payload instead of two. Every successful call
+  carried the compact JSON once in a text block and again in `structuredContent`,
+  doubling the bytes an agent receives per call — roughly halved now for a write
+  and a read. The structured object is the single channel and its contents are
+  unchanged; a successful call's text block is empty. This is a wire-shape change
+  for any client that read successes from text only.
+- An MCP error now reaches a text-only client intact. Clients that read an error
+  from text blocks alone used to fall back to a fixed sentence, "MCP tool returned
+  an error", dropping the code, message, `retryable` flag and `details`. The text
+  block is now serialized from the same payload object that goes into
+  `structuredContent`, so an agent sees the actual `PATH_NOT_FOUND`,
+  `CONTENT_CONFLICT`, `SENSITIVE_PATH_REFUSED` or `STORAGE_ERROR` document — with
+  its recovery hint and relative paths — and the two channels cannot drift. The
+  text copy is scrubbed by the same envelope, so it leaks no host path either.
+
+### Changed
+
+- `filekeeper-cli` 0.1.5 and `filekeeper-mcp` 0.1.5 are released together and
+  carry the same version number.
+
 ## 0.1.4 — 2026-10-31
 
 ### Fixed
