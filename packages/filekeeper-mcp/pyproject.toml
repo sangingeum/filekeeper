@@ -1,6 +1,6 @@
 [project]
 name = "filekeeper-mcp"
-version = "0.1.5"
+version = "0.1.6"
 description = "MCP server that exposes Filekeeper's filesystem operations to agent hosts."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"

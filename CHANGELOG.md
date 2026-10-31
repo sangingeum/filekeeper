@@ -4,7 +4,36 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.6 — 2026-10-31
+
+### Fixed
+
+- A dry run now reports itself as a preview. It returns `changed: false` with no
+  operation id, no after-hash and no size for a write it did not perform, and
+  carries the digest the target would have plus a `would_change` flag saying
+  whether the operation would change anything. A caller can tell a preview from a
+  completed write without reading prose, and a preview is never mistaken for
+  durable state.
+- A copy's journal row now records its source, so history names where the copied
+  content came from as well as where it went. An undo that is refused because the
+  target no longer matches its recorded state leaves a record of that refusal, and
+  that record cannot itself be undone: a failed undo is evidence, not a new
+  operation to reverse.
+- Error hints now name the interface the caller is actually on — the Core keyword
+  argument, the CLI flag or the MCP argument — instead of putting one surface's
+  name on every surface. A truncated patch reports the hunk's expected and actual
+  line counts, so a failed application says how far off the hunk was.
+
+### Changed
+
+- `filekeeper-cli` 0.1.6 and `filekeeper-mcp` 0.1.6 are released together and
+  carry the same version number.
+
 ## 0.1.5 — 2026-10-31
+
+**Cut but never published.** Three fixes landed after this version was built, so
+its artefacts would not match what a consumer surveyed under this number. Its
+changes ship in 0.1.6; no 0.1.5 artefact reached users.
 
 ### Fixed
 
@@ -35,8 +64,8 @@ All notable changes to this project are recorded here. The format follows
 
 ### Changed
 
-- `filekeeper-cli` 0.1.5 and `filekeeper-mcp` 0.1.5 are released together and
-  carry the same version number.
+- `filekeeper-cli` 0.1.5 and `filekeeper-mcp` 0.1.5 carry the same version number.
+  This version was built but not published, so its changes reach users in 0.1.6.
 
 ## 0.1.4 — 2026-10-31
 
