@@ -163,9 +163,7 @@ def mutation(result: MutationResult) -> str:
             "(recoverable through history, not atomic across files)"
         )
         for file in result.patch_files:
-            hunks = ", ".join(
-                f"hunk {hunk.old_start}: {hunk.status}" for hunk in file.hunks
-            )
+            hunks = ", ".join(f"hunk {hunk.old_start}: {hunk.status}" for hunk in file.hunks)
             lines.append(f"  {file.change:<9} {file.path}  {hunks}")
     if result.preview_diff:
         lines.append("diff:")

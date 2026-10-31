@@ -106,9 +106,7 @@ def _load(
         expect="file",
         state_dir=handle.state_dir,
     )
-    warnings = _guard_sensitive(
-        handle, resolved, allow_sensitive_write=allow_sensitive_write
-    )
+    warnings = _guard_sensitive(handle, resolved, allow_sensitive_write=allow_sensitive_write)
     try:
         raw = resolved.absolute.read_bytes()
     except OSError as exc:
@@ -220,10 +218,7 @@ def _candidates(text: str, old: str) -> list[dict[str, Any]]:
         ratio = difflib.SequenceMatcher(None, probe, line.text.strip()).ratio()
         scored.append((ratio, index, line.text))
     scored.sort(key=lambda item: item[0], reverse=True)
-    return [
-        {"line": number, "text": content}
-        for _, number, content in scored[:3]
-    ]
+    return [{"line": number, "text": content} for _, number, content in scored[:3]]
 
 
 def _finish(
@@ -241,9 +236,7 @@ def _finish(
     actor: str | None,
     task_id: str | None,
 ) -> MutationResult:
-    data = encode_text(
-        new_text, encoding=loaded.profile.encoding, has_bom=loaded.profile.has_bom
-    )
+    data = encode_text(new_text, encoding=loaded.profile.encoding, has_bom=loaded.profile.has_bom)
     _check_size(handle, data, loaded.resolved.relative)
 
     preview: str | None = None
@@ -337,9 +330,7 @@ def replace_text(
     """
 
     if match not in _MATCH_POLICIES:
-        raise ValidationError(
-            "match policy must be 'first' or 'all'", details={"match": match}
-        )
+        raise ValidationError("match policy must be 'first' or 'all'", details={"match": match})
     if old == "":
         raise ValidationError("replacement target must not be empty")
     if expected_match_count is not None and expected_match_count < 0:
@@ -489,17 +480,11 @@ def replace_lines(
     newline = _newline_for(loaded.profile)
     replacement_lines = _replacement_lines(replacement, newline)
     if replacement_lines and not replacement.endswith(("\n", "\r")):
-        replacement_lines[-1] = DiffLine(
-            replacement_lines[-1].text, lines[end_line - 1].ending
-        )
+        replacement_lines[-1] = DiffLine(replacement_lines[-1].text, lines[end_line - 1].ending)
     new_lines = lines[: start_line - 1] + replacement_lines + lines[end_line:]
     new_text = join_lines(new_lines)
 
-    span = (
-        f"line {start_line}"
-        if start_line == end_line
-        else f"lines {start_line}-{end_line}"
-    )
+    span = f"line {start_line}" if start_line == end_line else f"lines {start_line}-{end_line}"
     return _finish(
         handle,
         loaded,
@@ -620,11 +605,7 @@ def delete_lines(
 
     new_lines = lines[: start_line - 1] + lines[end_line:]
     new_text = join_lines(new_lines)
-    span = (
-        f"line {start_line}"
-        if start_line == end_line
-        else f"lines {start_line}-{end_line}"
-    )
+    span = f"line {start_line}" if start_line == end_line else f"lines {start_line}-{end_line}"
     return _finish(
         handle,
         loaded,
@@ -779,9 +760,7 @@ def _parse_patch(patch_text: str) -> tuple[_FilePatch, ...]:
                             raise _syntax("newline marker has no preceding line", index + 1)
                         body[-1] = dataclasses.replace(body[-1], terminated=False)
                         index += 1
-                    hunks.append(
-                        _Hunk(old_start, old_count, new_start, new_count, tuple(body))
-                    )
+                    hunks.append(_Hunk(old_start, old_count, new_start, new_count, tuple(body)))
                     continue
                 if current.strip() == "" or current.startswith(_METADATA_PREFIXES):
                     index += 1
@@ -922,9 +901,7 @@ def _plan_file(
         for_write=True,
         state_dir=handle.state_dir,
     )
-    warnings = _guard_sensitive(
-        handle, resolved, allow_sensitive_write=allow_sensitive_write
-    )
+    warnings = _guard_sensitive(handle, resolved, allow_sensitive_write=allow_sensitive_write)
 
     newline = ""
     if create:
@@ -979,9 +956,7 @@ def _plan_file(
         after_exists = False
         change: Literal["created", "modified", "deleted", "unchanged"] = "deleted"
     else:
-        after_bytes = encode_text(
-            after_text, encoding=profile_encoding, has_bom=has_bom
-        )
+        after_bytes = encode_text(after_text, encoding=profile_encoding, has_bom=has_bom)
         _check_size(handle, after_bytes, relative)
         after_hash = hash_bytes(after_bytes)
         after_exists = True
@@ -1081,18 +1056,14 @@ def apply_patch(
     """
 
     if not patch_text.strip():
-        raise PatchFailedError(
-            "invalid patch: the patch is empty", details={"reason": "syntax"}
-        )
+        raise PatchFailedError("invalid patch: the patch is empty", details={"reason": "syntax"})
 
     patches = _parse_patch(patch_text)
     seen: set[str] = set()
     plans: list[_Plan] = []
     warnings: list[str] = []
     for patch in patches:
-        plan, plan_warnings = _plan_file(
-            handle, patch, allow_sensitive_write=allow_sensitive_write
-        )
+        plan, plan_warnings = _plan_file(handle, patch, allow_sensitive_write=allow_sensitive_write)
         if plan.relative in seen:
             raise PatchFailedError(
                 f"the patch names {plan.relative} more than once",
@@ -1106,10 +1077,7 @@ def apply_patch(
         plans = [
             dataclasses.replace(
                 plan,
-                hunks=tuple(
-                    dataclasses.replace(hunk, status="would_apply")
-                    for hunk in plan.hunks
-                ),
+                hunks=tuple(dataclasses.replace(hunk, status="would_apply") for hunk in plan.hunks),
             )
             for plan in plans
         ]

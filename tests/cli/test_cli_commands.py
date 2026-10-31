@@ -239,9 +239,7 @@ def test_absolute_path_outside_exits_six(run_cli, workspace_root: Path, tmp_path
     assert "PATH_OUTSIDE_WORKSPACE" not in err.replace("ABSOLUTE_PATH_OUTSIDE_WORKSPACE", "")
 
 
-def test_symlink_escape_refusal_exits_eleven(
-    run_cli, workspace_root: Path, tmp_path: Path
-) -> None:
+def test_symlink_escape_refusal_exits_eleven(run_cli, workspace_root: Path, tmp_path: Path) -> None:
     run_cli("workspace", "create", "project", str(workspace_root))
     outside = tmp_path / "target.txt"
     outside.write_text("secret\n", encoding="utf-8")
@@ -293,9 +291,7 @@ def test_recursive_delete_warning_states_recoverable_but_not_atomic(
     assert "recoverable only once history lands" not in out
 
 
-def test_workspace_list_and_show_mark_a_missing_root(
-    run_cli, workspace_root: Path
-) -> None:
+def test_workspace_list_and_show_mark_a_missing_root(run_cli, workspace_root: Path) -> None:
     run_cli("workspace", "create", "project", str(workspace_root))
     run_cli("workspace", "use", "project")
     shutil.rmtree(workspace_root)

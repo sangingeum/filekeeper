@@ -16,9 +16,7 @@ import pytest
 
 from filekeeper.cli import exit_codes
 
-pytestmark = pytest.mark.skipif(
-    os.geteuid() == 0, reason="root can write at the filesystem root"
-)
+pytestmark = pytest.mark.skipif(os.geteuid() == 0, reason="root can write at the filesystem root")
 
 
 def _relative_to_filesystem_root(tmp_path: Path, name: str) -> str:
@@ -32,9 +30,7 @@ def test_create_read_history_undo_at_root_after_init(run_cli, tmp_path: Path) ->
     assert code == exit_codes.SUCCESS, err
     assert "initialized" in out
 
-    code, out, err = run_cli(
-        "--root", "/", "--json", "file", "create", target, "--content", "hi\n"
-    )
+    code, out, err = run_cli("--root", "/", "--json", "file", "create", target, "--content", "hi\n")
     assert code == exit_codes.SUCCESS, (out, err)
     created = json.loads(out)
     assert created["ok"] is True
@@ -54,9 +50,7 @@ def test_create_read_history_undo_at_root_after_init(run_cli, tmp_path: Path) ->
     operations = history.get("operations", history.get("history", []))
     assert [entry["operation_id"] for entry in operations] == [created["operation_id"]]
 
-    code, out, _ = run_cli(
-        "--root", "/", "--json", "history", "undo", created["operation_id"]
-    )
+    code, out, _ = run_cli("--root", "/", "--json", "history", "undo", created["operation_id"])
     assert code == exit_codes.SUCCESS, out
     assert json.loads(out)["ok"] is True
     assert not (tmp_path / "fk-cli-probe.txt").exists()
@@ -102,9 +96,7 @@ def test_a_state_directory_error_names_no_host_path(run_cli, home: Path, tmp_pat
     )
 
     target = _relative_to_filesystem_root(tmp_path, "fk-cli-explicit-probe.txt")
-    code, out, _ = run_cli(
-        "--root", "/", "--json", "file", "create", target, "--content", "hi\n"
-    )
+    code, out, _ = run_cli("--root", "/", "--json", "file", "create", target, "--content", "hi\n")
 
     assert code == exit_codes.STORAGE_ERROR
     payload = json.loads(out)
@@ -121,9 +113,7 @@ def test_an_argument_shape_mistake_keeps_the_taxonomy(run_cli, tmp_path: Path) -
     code, _, _ = run_cli("init")
     assert code == exit_codes.SUCCESS
 
-    code, out, _ = run_cli(
-        "--json", "workspace", "create", "bad name!", str(tmp_path)
-    )
+    code, out, _ = run_cli("--json", "workspace", "create", "bad name!", str(tmp_path))
 
     assert code == exit_codes.INVALID_ARGUMENT
     payload = json.loads(out)

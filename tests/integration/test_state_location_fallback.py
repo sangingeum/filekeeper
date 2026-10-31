@@ -73,9 +73,7 @@ def test_an_unwritable_root_falls_back_to_the_global_store_with_a_warning(
         _allow_writes(root)
 
 
-def test_a_generated_config_still_reaches_the_global_fallback(
-    home: Path, tmp_path: Path
-) -> None:
+def test_a_generated_config_still_reaches_the_global_fallback(home: Path, tmp_path: Path) -> None:
     """``keeper init`` must not turn the built-in default into an explicit choice."""
 
     init_home(home)

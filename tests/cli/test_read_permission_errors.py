@@ -35,9 +35,7 @@ def _assert_no_host_path(text: str, workspace_root: Path) -> None:
     assert ABSOLUTE_PATH.search(text) is None, text
 
 
-def test_unreadable_file_read_is_a_storage_error(
-    run_cli, workspace_root: Path
-) -> None:
+def test_unreadable_file_read_is_a_storage_error(run_cli, workspace_root: Path) -> None:
     run_cli("workspace", "create", "project", str(workspace_root))
     target = workspace_root / "noperm.txt"
     target.write_text("secret\n", encoding="utf-8")
@@ -55,9 +53,7 @@ def test_unreadable_file_read_is_a_storage_error(
     _assert_no_host_path(out, workspace_root)
 
 
-def test_unreadable_file_in_read_many_is_a_storage_error(
-    run_cli, workspace_root: Path
-) -> None:
+def test_unreadable_file_in_read_many_is_a_storage_error(run_cli, workspace_root: Path) -> None:
     run_cli("workspace", "create", "project", str(workspace_root))
     target = workspace_root / "noperm.txt"
     target.write_text("secret\n", encoding="utf-8")
@@ -77,9 +73,7 @@ def test_unreadable_file_in_read_many_is_a_storage_error(
     _assert_no_host_path(out, workspace_root)
 
 
-def test_unreadable_directory_listing_is_a_storage_error(
-    run_cli, workspace_root: Path
-) -> None:
+def test_unreadable_directory_listing_is_a_storage_error(run_cli, workspace_root: Path) -> None:
     run_cli("workspace", "create", "project", str(workspace_root))
     locked = workspace_root / "locked"
     locked.mkdir()
@@ -97,9 +91,7 @@ def test_unreadable_directory_listing_is_a_storage_error(
     _assert_no_host_path(out, workspace_root)
 
 
-def test_unreadable_file_info_and_hash_are_storage_errors(
-    run_cli, workspace_root: Path
-) -> None:
+def test_unreadable_file_info_and_hash_are_storage_errors(run_cli, workspace_root: Path) -> None:
     run_cli("workspace", "create", "project", str(workspace_root))
     target = workspace_root / "noperm.txt"
     target.write_text("secret\n", encoding="utf-8")
@@ -118,9 +110,7 @@ def test_unreadable_file_info_and_hash_are_storage_errors(
         _assert_no_host_path(out, workspace_root)
 
 
-def test_unreadable_content_search_root_is_a_storage_error(
-    run_cli, workspace_root: Path
-) -> None:
+def test_unreadable_content_search_root_is_a_storage_error(run_cli, workspace_root: Path) -> None:
     run_cli("workspace", "create", "project", str(workspace_root))
     locked = workspace_root / "locked"
     locked.mkdir()

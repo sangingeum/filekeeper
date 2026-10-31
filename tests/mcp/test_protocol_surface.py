@@ -94,8 +94,7 @@ def test_schemas_require_the_arguments_a_caller_cannot_guess(target: ServerTarge
     advertised = {tool.name: tool for tool in exercise(target, []).tools}
 
     required = {
-        name: set(tool.input_schema.get("required", []))
-        for name, tool in advertised.items()
+        name: set(tool.input_schema.get("required", [])) for name, tool in advertised.items()
     }
     assert required["file_read"] == {"path"}
     assert required["file_replace_text"] == {"path", "old", "new", "match"}

@@ -110,9 +110,9 @@ def test_a_credential_shaped_target_is_refused_and_an_override_warns(
 
     assert overridden.is_error is False
     assert overridden.structured["ok"] is True
-    assert any(
-        "overridden" in warning for warning in overridden.structured["warnings"]
-    ), overridden.structured["warnings"]
+    assert any("overridden" in warning for warning in overridden.structured["warnings"]), (
+        overridden.structured["warnings"]
+    )
     assert (target.root / ".env").read_text(encoding="utf-8") == "TOKEN=1\n"
 
 
@@ -124,9 +124,7 @@ def test_a_credential_refusal_names_the_mcp_argument_only(target: ServerTarget) 
     retryable flag and details stay exactly as Core produced them.
     """
 
-    result = exercise(
-        target, [("file_write", {"path": ".env", "content": "TOKEN=1\n"})]
-    )
+    result = exercise(target, [("file_write", {"path": ".env", "content": "TOKEN=1\n"})])
 
     refused = result.by_name("file_write")
     _assert_clean(refused, target)
@@ -172,9 +170,7 @@ def test_a_storage_failure_reports_storage_error_without_a_host_path(
     blob_directory.rename(target.root / ".filekeeper" / "blobs-disabled")
     blob_directory.write_text("not a directory\n", encoding="utf-8")
 
-    result = exercise(
-        target, [("file_write", {"path": "notes.txt", "content": "second\n"})]
-    )
+    result = exercise(target, [("file_write", {"path": "notes.txt", "content": "second\n"})])
 
     failed = result.by_name("file_write")
     _assert_clean(failed, target)

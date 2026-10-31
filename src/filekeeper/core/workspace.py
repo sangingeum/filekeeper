@@ -69,9 +69,7 @@ def global_workspace_state_dir(workspace_id: str, home: Path) -> Path:
     return Path(home) / "workspaces" / workspace_id
 
 
-def display_state_location(
-    state_dir: Path, *, root: Path | None, home: Path | None
-) -> str:
+def display_state_location(state_dir: Path, *, root: Path | None, home: Path | None) -> str:
     """Render a state directory without naming an absolute host path.
 
     A public error envelope is read by a caller confined to the workspace, so a
@@ -123,9 +121,7 @@ def resolve_state_location(workspace: Workspace, config: Config, home: Path) -> 
     if config.state_location_explicit:
         # The operator asked for project-local state; do not redirect it.
         return StateLocation(project_local)
-    return StateLocation(
-        global_workspace_state_dir(workspace.id, home), GLOBAL_FALLBACK_WARNING
-    )
+    return StateLocation(global_workspace_state_dir(workspace.id, home), GLOBAL_FALLBACK_WARNING)
 
 
 def workspace_state_dir(workspace: Workspace, config: Config, home: Path) -> Path:

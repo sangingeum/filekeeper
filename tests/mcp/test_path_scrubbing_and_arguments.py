@@ -44,9 +44,7 @@ def test_a_bare_slash_is_never_scrubbed() -> None:
 
 
 def test_a_genuine_host_prefix_is_still_scrubbed() -> None:
-    cleaned = scrub_text(
-        "cannot read /srv/project/sub/a.txt: Permission denied", ("/srv/project",)
-    )
+    cleaned = scrub_text("cannot read /srv/project/sub/a.txt: Permission denied", ("/srv/project",))
 
     assert cleaned == "cannot read <host-path>/sub/a.txt: Permission denied"
     assert "/srv/project" not in cleaned
@@ -106,9 +104,7 @@ def test_refused_undo_metadata_keeps_conflicting_paths_relative(target: ServerTa
             ("file_move", {"source": "copy.txt", "destination": "copy-renamed.txt"}),
             (
                 "undo_operation",
-                lambda seen: {
-                    "operation_id": seen.by_name("file_copy").structured["operation_id"]
-                },
+                lambda seen: {"operation_id": seen.by_name("file_copy").structured["operation_id"]},
             ),
             ("history_list", {}),
         ],
@@ -138,9 +134,7 @@ def test_the_error_text_fallback_is_scrubbed_exactly_like_the_structured_payload
 
 
 def test_a_wrong_argument_name_is_a_coded_error(target: ServerTarget) -> None:
-    result = exercise(
-        target, [("file_copy", {"path": "notes.txt", "destination": "copied.txt"})]
-    )
+    result = exercise(target, [("file_copy", {"path": "notes.txt", "destination": "copied.txt"})])
 
     reply = result.by_name("file_copy")
     assert reply.is_error is True

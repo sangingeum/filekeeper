@@ -167,9 +167,7 @@ def test_history_diff_keeps_lines_apart_when_the_file_has_no_final_newline(
     assert "+beta" in lines
 
 
-def test_history_list_and_undo_use_the_same_operation_key(
-    run_cli, workspace_root: Path
-) -> None:
+def test_history_list_and_undo_use_the_same_operation_key(run_cli, workspace_root: Path) -> None:
     run_cli("workspace", "create", "project", str(workspace_root))
     run_cli("file", "write", "notes.txt", "--content", "changed\n")
 
@@ -192,9 +190,7 @@ def test_history_list_and_undo_use_the_same_operation_key(
     result = json.loads(out)
     assert result["ok"] is True
     assert result["operation_id"].startswith("op_")
-    assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == (
-        "alpha\nbeta\ngamma\n"
-    )
+    assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == ("alpha\nbeta\ngamma\n")
 
 
 def test_history_undo_refuses_a_copy_whose_destination_was_moved_away(

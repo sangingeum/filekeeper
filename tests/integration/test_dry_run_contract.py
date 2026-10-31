@@ -55,9 +55,7 @@ def test_dry_run_write_reports_no_change_and_predicts_the_hash(
     assert result.predicted_after_hash is not None
     assert result.predicted_after_hash != result.before_hash
     assert result.would_change is True
-    assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == (
-        "alpha\nbeta\ngamma\n"
-    )
+    assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == ("alpha\nbeta\ngamma\n")
 
 
 def test_dry_run_write_reports_would_change_false_for_identical_content(
@@ -100,16 +98,12 @@ def test_a_would_change_preview_still_names_the_item_change(service) -> None:
 def test_dry_run_replace_text_reports_no_change_and_keeps_its_preview(
     service, workspace_root: Path
 ) -> None:
-    result = service.replace_text(
-        "notes.txt", "beta", "BETA", match="first", dry_run=True
-    )
+    result = service.replace_text("notes.txt", "beta", "BETA", match="first", dry_run=True)
 
     _assert_preview_contract(result)
     assert result.preview_diff is not None
     assert result.predicted_after_hash is not None
-    assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == (
-        "alpha\nbeta\ngamma\n"
-    )
+    assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == ("alpha\nbeta\ngamma\n")
 
 
 def test_dry_run_replace_lines_reports_no_change(service, workspace_root: Path) -> None:
@@ -117,9 +111,7 @@ def test_dry_run_replace_lines_reports_no_change(service, workspace_root: Path) 
 
     _assert_preview_contract(result)
     assert result.preview_diff is not None
-    assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == (
-        "alpha\nbeta\ngamma\n"
-    )
+    assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == ("alpha\nbeta\ngamma\n")
 
 
 def test_dry_run_insert_lines_reports_no_change(service, workspace_root: Path) -> None:
@@ -127,9 +119,7 @@ def test_dry_run_insert_lines_reports_no_change(service, workspace_root: Path) -
 
     _assert_preview_contract(result)
     assert result.preview_diff is not None
-    assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == (
-        "alpha\nbeta\ngamma\n"
-    )
+    assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == ("alpha\nbeta\ngamma\n")
 
 
 def test_dry_run_delete_lines_reports_no_change(service, workspace_root: Path) -> None:
@@ -137,9 +127,7 @@ def test_dry_run_delete_lines_reports_no_change(service, workspace_root: Path) -
 
     _assert_preview_contract(result)
     assert result.preview_diff is not None
-    assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == (
-        "alpha\nbeta\ngamma\n"
-    )
+    assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == ("alpha\nbeta\ngamma\n")
 
 
 def test_dry_run_apply_patch_reports_no_change_and_keeps_its_preview(
@@ -181,18 +169,14 @@ def test_dry_run_delete_file_reports_no_change(service, workspace_root: Path) ->
     assert (workspace_root / "notes.txt").exists()
 
 
-def test_dry_run_create_directory_reports_no_change(
-    service, workspace_root: Path
-) -> None:
+def test_dry_run_create_directory_reports_no_change(service, workspace_root: Path) -> None:
     result = service.create_directory("fresh", dry_run=True)
 
     _assert_preview_contract(result)
     assert not (workspace_root / "fresh").exists()
 
 
-def test_dry_run_move_directory_reports_no_change(
-    service, workspace_root: Path
-) -> None:
+def test_dry_run_move_directory_reports_no_change(service, workspace_root: Path) -> None:
     result = service.move_directory("sub", "renamed", dry_run=True)
 
     _assert_preview_contract(result)
@@ -200,12 +184,8 @@ def test_dry_run_move_directory_reports_no_change(
     assert not (workspace_root / "renamed").exists()
 
 
-def test_dry_run_delete_directory_reports_no_change(
-    service, workspace_root: Path
-) -> None:
-    result = service.delete_directory(
-        "sub", recursive=True, confirm_recursive=True, dry_run=True
-    )
+def test_dry_run_delete_directory_reports_no_change(service, workspace_root: Path) -> None:
+    result = service.delete_directory("sub", recursive=True, confirm_recursive=True, dry_run=True)
 
     _assert_preview_contract(result)
     assert (workspace_root / "sub" / "nested.md").is_file()
@@ -224,9 +204,7 @@ def test_real_write_still_reports_change_and_its_after_hash(service) -> None:
     assert result.items[0].size_bytes == 4
 
 
-def test_real_patch_still_reports_change_and_its_after_hash(
-    service, workspace_root: Path
-) -> None:
+def test_real_patch_still_reports_change_and_its_after_hash(service, workspace_root: Path) -> None:
     patch = _patch("notes.txt", "alpha\nbeta\ngamma\n", "alpha\nBETA\ngamma\n")
 
     result = service.apply_patch(patch)

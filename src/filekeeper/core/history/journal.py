@@ -321,9 +321,7 @@ def _load_metadata(raw: str | None) -> dict[str, Any]:
 
 
 def _current_state(root: Path, item: sqlite3.Row | OperationItemRecord) -> tuple[bool, str | None]:
-    relative = (
-        str(item["relative_path"]) if isinstance(item, sqlite3.Row) else item.relative_path
-    )
+    relative = str(item["relative_path"]) if isinstance(item, sqlite3.Row) else item.relative_path
     path = root / relative
     if str(item["item_type"] if isinstance(item, sqlite3.Row) else item.item_type) == "directory":
         return path.is_dir(), None
@@ -351,9 +349,7 @@ def _matches(
     return current_hash == digest
 
 
-def _classify_pending(
-    root: Path, items: list[sqlite3.Row]
-) -> tuple[str, list[str]]:
+def _classify_pending(root: Path, items: list[sqlite3.Row]) -> tuple[str, list[str]]:
     if not items:
         return FAILED, []
     all_after = True

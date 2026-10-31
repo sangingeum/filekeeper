@@ -47,9 +47,7 @@ def test_a_configuration_from_init_is_not_explicit(tmp_path: Path) -> None:
 def test_a_hand_written_project_choice_is_explicit(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()
-    config_path(home).write_text(
-        '[filekeeper]\nstate_location = "project"\n', encoding="utf-8"
-    )
+    config_path(home).write_text('[filekeeper]\nstate_location = "project"\n', encoding="utf-8")
 
     config = load_config(home)
 
@@ -60,9 +58,7 @@ def test_a_hand_written_project_choice_is_explicit(tmp_path: Path) -> None:
 def test_a_hand_written_global_choice_is_explicit(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()
-    config_path(home).write_text(
-        '[filekeeper]\nstate_location = "global"\n', encoding="utf-8"
-    )
+    config_path(home).write_text('[filekeeper]\nstate_location = "global"\n', encoding="utf-8")
 
     config = load_config(home)
 

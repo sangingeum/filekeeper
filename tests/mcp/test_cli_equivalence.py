@@ -120,17 +120,21 @@ def test_a_stale_hash_is_the_same_refusal_through_both_adapters(
     assert cli_payload["error"]["retryable"] is False
     assert set(cli_payload) == {"ok", "error"}
     assert set(refusal.structured) == {"ok", "error"}
-    assert set(cli_payload["error"]) == set(refusal.error) == {
-        "code",
-        "message",
-        "retryable",
-        "details",
-    }
+    assert (
+        set(cli_payload["error"])
+        == set(refusal.error)
+        == {
+            "code",
+            "message",
+            "retryable",
+            "details",
+        }
+    )
     for field in ("code", "retryable"):
         assert cli_payload["error"][field] == refusal.error[field]
     assert cli_payload["error"]["details"]["path"] == "notes.txt"
     assert refusal.error["details"]["path"] == "notes.txt"
-    assert cli_payload["error"]["details"]["actual_hash"] == (
-        refusal.error["details"]["actual_hash"]
+    assert (
+        cli_payload["error"]["details"]["actual_hash"] == (refusal.error["details"]["actual_hash"])
     )
     assert (cli_root / "notes.txt").read_bytes() == (mcp_root / "notes.txt").read_bytes()

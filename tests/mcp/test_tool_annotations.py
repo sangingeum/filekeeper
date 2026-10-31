@@ -117,9 +117,7 @@ def test_annotation_values_match_the_handlers(target: ServerTarget) -> None:
         for name, hints in EXPECTED_ANNOTATIONS.items()
         if hints[0] is False and hints[1] is False
     }
-    destructive = {
-        name for name, hints in EXPECTED_ANNOTATIONS.items() if hints[1] is True
-    }
+    destructive = {name for name, hints in EXPECTED_ANNOTATIONS.items() if hints[1] is True}
 
     assert additive == {"directory_create", "file_insert_lines"}
     assert not read_only & destructive

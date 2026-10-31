@@ -226,9 +226,7 @@ def _apply(journal: OperationJournal, steps: list[_Step]) -> None:
             path.unlink()
             fsync_directory(path.parent)
         except OSError as exc:
-            raise storage_failure(
-                "remove file during undo", step.item.relative_path, exc
-            ) from exc
+            raise storage_failure("remove file during undo", step.item.relative_path, exc) from exc
 
     directories = [step for step in removable if step.action == "remove-directory"]
     for step in sorted(
@@ -394,9 +392,7 @@ def undo_operation(
         raise
     journal.commit(begun.operation_id)
     journal._set_status(record.operation_id, UNDONE)
-    return _result(
-        journal, record, begun.operation_id, workspace_name=workspace_name, steps=steps
-    )
+    return _result(journal, record, begun.operation_id, workspace_name=workspace_name, steps=steps)
 
 
 def latest_undoable(journal: OperationJournal, *, actor: str | None = None) -> OperationRecord:

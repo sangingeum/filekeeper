@@ -23,15 +23,11 @@ def _patch(path: str, before: str, after: str) -> str:
     return unified_diff_text(before, after, fromfile=fromfile, tofile=tofile)
 
 
-def test_a_multi_file_patch_applies_and_reports_every_hunk(
-    service, workspace_root: Path
-) -> None:
+def test_a_multi_file_patch_applies_and_reports_every_hunk(service, workspace_root: Path) -> None:
     _write(workspace_root, "a.txt", "one\ntwo\n")
     _write(workspace_root, "b.txt", "red\n")
 
-    patch = _patch("a.txt", "one\ntwo\n", "one\nTWO\n") + _patch(
-        "b.txt", "red\n", "blue\n"
-    )
+    patch = _patch("a.txt", "one\ntwo\n", "one\nTWO\n") + _patch("b.txt", "red\n", "blue\n")
 
     result = service.apply_patch(patch)
 
@@ -49,9 +45,7 @@ def test_a_multi_file_patch_applies_and_reports_every_hunk(
 def test_a_patch_can_create_and_delete_files(service, workspace_root: Path) -> None:
     _write(workspace_root, "gone.txt", "removed\n")
 
-    patch = _patch("new.txt", "", "created\n") + _patch(
-        "gone.txt", "removed\n", ""
-    )
+    patch = _patch("new.txt", "", "created\n") + _patch("gone.txt", "removed\n", "")
 
     result = service.apply_patch(patch)
 
@@ -60,14 +54,10 @@ def test_a_patch_can_create_and_delete_files(service, workspace_root: Path) -> N
     assert [file.change for file in result.patch_files] == ["created", "deleted"]
 
 
-def test_undoing_a_multi_file_patch_restores_every_file(
-    service, workspace_root: Path
-) -> None:
+def test_undoing_a_multi_file_patch_restores_every_file(service, workspace_root: Path) -> None:
     first = _write(workspace_root, "a.txt", "one\ntwo\n")
     second = _write(workspace_root, "b.txt", "red\n")
-    patch = _patch("a.txt", "one\ntwo\n", "one\nTWO\n") + _patch(
-        "b.txt", "red\n", "blue\n"
-    )
+    patch = _patch("a.txt", "one\ntwo\n", "one\nTWO\n") + _patch("b.txt", "red\n", "blue\n")
 
     result = service.apply_patch(patch)
     service.undo(result.operation_id or "")
@@ -92,13 +82,7 @@ def test_a_failed_hunk_leaves_the_tree_unmodified(service, workspace_root: Path)
 def test_an_ambiguous_hunk_is_rejected(service, workspace_root: Path) -> None:
     target = _write(workspace_root, "a.txt", "x\nx\n")
     before = target.read_bytes()
-    patch = (
-        "--- a/a.txt\n"
-        "+++ b/a.txt\n"
-        "@@ -5,1 +5,1 @@\n"
-        "-x\n"
-        "+y\n"
-    )
+    patch = "--- a/a.txt\n+++ b/a.txt\n@@ -5,1 +5,1 @@\n-x\n+y\n"
 
     with pytest.raises(PatchFailedError) as caught:
         service.apply_patch(patch)
@@ -147,9 +131,7 @@ def test_patch_dry_run_writes_nothing(service, workspace_root: Path) -> None:
     assert target.read_bytes() == before
 
 
-def test_a_truncated_hunk_reports_expected_and_actual_counts(
-    service, workspace_root: Path
-) -> None:
+def test_a_truncated_hunk_reports_expected_and_actual_counts(service, workspace_root: Path) -> None:
     """A short hunk states the header's counts and what the body actually had.
 
     The caller can locate and repair the patch in one step instead of asking

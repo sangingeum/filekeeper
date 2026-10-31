@@ -72,9 +72,7 @@ def _walk_tree(root: Path) -> list[Path]:
     return found
 
 
-def _file_bytes(
-    path: Path, cap: int, *, display_path: str
-) -> tuple[str | None, bytes | None]:
+def _file_bytes(path: Path, cap: int, *, display_path: str) -> tuple[str | None, bytes | None]:
     try:
         size = path.stat().st_size
     except OSError:
@@ -306,8 +304,7 @@ def move_directory(
             operation_type="move_directory",
             target_path=destination_resolved.relative,
             summary=(
-                f"Moved directory {source_resolved.relative} "
-                f"to {destination_resolved.relative}."
+                f"Moved directory {source_resolved.relative} to {destination_resolved.relative}."
             ),
             items=items,
             actor=actor,
@@ -398,8 +395,7 @@ def delete_directory(
     entries = _count_entries(target)
     if entries > 0 and not recursive:
         raise ValidationError(
-            "directory is not empty; "
-            f"{DIRECTORY_DELETE_HINT.sentence(CallerSurface.CORE)}",
+            f"directory is not empty; {DIRECTORY_DELETE_HINT.sentence(CallerSurface.CORE)}",
             details={"path": resolved.relative, "entries": entries},
             override_hint=DIRECTORY_DELETE_HINT,
         )

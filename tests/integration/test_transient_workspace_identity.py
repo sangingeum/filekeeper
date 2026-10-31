@@ -43,9 +43,7 @@ def test_a_second_process_sees_and_can_undo_the_first_process_work(
     root = tmp_path / "workspace"
     root.mkdir()
     home.mkdir(parents=True)
-    (home / "config.toml").write_text(
-        '[filekeeper]\nstate_location = "global"\n', encoding="utf-8"
-    )
+    (home / "config.toml").write_text('[filekeeper]\nstate_location = "global"\n', encoding="utf-8")
 
     created_code, created = _run(home, root, "file", "create", "one.txt", "--content", "first\n")
     assert created_code == 0, created

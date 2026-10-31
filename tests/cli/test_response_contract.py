@@ -21,9 +21,7 @@ def _json_object(out: str) -> dict:
     return payload
 
 
-def test_a_success_document_is_flat_and_carries_operation_id(
-    run_cli, workspace_root: Path
-) -> None:
+def test_a_success_document_is_flat_and_carries_operation_id(run_cli, workspace_root: Path) -> None:
     run_cli("workspace", "create", "project", str(workspace_root))
 
     code, out, _ = run_cli("file", "write", "notes.txt", "--content", "changed\n", "--json")
@@ -45,9 +43,7 @@ def test_a_success_document_is_flat_and_carries_operation_id(
     assert "error" not in payload
 
 
-def test_an_error_document_uses_the_same_top_level_shape(
-    run_cli, workspace_root: Path
-) -> None:
+def test_an_error_document_uses_the_same_top_level_shape(run_cli, workspace_root: Path) -> None:
     run_cli("workspace", "create", "project", str(workspace_root))
 
     code, out, _ = run_cli(
@@ -78,6 +74,4 @@ def test_an_error_document_uses_the_same_top_level_shape(
     )
     assert "path" not in payload
     assert "workspace" not in payload
-    assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == (
-        "alpha\nbeta\ngamma\n"
-    )
+    assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == ("alpha\nbeta\ngamma\n")

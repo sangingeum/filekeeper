@@ -79,9 +79,7 @@ def test_directory_delete_undo_restores_the_whole_tree(service) -> None:
     (tree / "nested").mkdir()
     (tree / "nested" / "second.txt").write_text("second\n", encoding="utf-8")
 
-    result = service.delete_directory(
-        "tree", recursive=True, confirm_recursive=True
-    )
+    result = service.delete_directory("tree", recursive=True, confirm_recursive=True)
     assert not tree.exists()
 
     service.undo(result.operation_id)
@@ -372,9 +370,7 @@ def test_a_refused_undo_leaves_a_record_that_is_not_undoable(service) -> None:
     # conflict and that nothing changed, so no second refusal row is written.
     with pytest.raises(UndoConflictError):
         service.undo(refusal.operation_id)
-    assert [record.operation_type for record in service.list_history()].count(
-        "undo_refused"
-    ) == 1
+    assert [record.operation_type for record in service.list_history()].count("undo_refused") == 1
 
 
 def test_undoing_a_refusal_record_writes_no_second_refusal_row(service) -> None:

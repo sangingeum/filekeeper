@@ -81,9 +81,7 @@ def _default_file_mode() -> int:
     return 0o666 & ~current
 
 
-def _snapshot(
-    path: Path, cap: int, *, display_path: str
-) -> tuple[str | None, bytes | None, bool]:
+def _snapshot(path: Path, cap: int, *, display_path: str) -> tuple[str | None, bytes | None, bool]:
     """Return ``(hash, bytes, exists)`` for a file, without reading oversize content.
 
     ``bytes`` is ``None`` for an oversize file: the hash is still recorded, the
@@ -289,8 +287,7 @@ def create_file(
         raise NotAFileError("path is a directory", details={"path": resolved.relative})
     if resolved.exists and expected_absent:
         raise AlreadyExistsError(
-            "file already exists; "
-            f"{CREATE_OVERWRITE_HINT.sentence(CallerSurface.CORE)}",
+            f"file already exists; {CREATE_OVERWRITE_HINT.sentence(CallerSurface.CORE)}",
             details={"path": resolved.relative},
             override_hint=CREATE_OVERWRITE_HINT,
         )
@@ -448,8 +445,7 @@ def copy_file(
         )
         if expected_destination_hash is None:
             raise AlreadyExistsError(
-                "destination already exists; "
-                f"{COPY_OVERWRITE_HINT.sentence(CallerSurface.CORE)}",
+                f"destination already exists; {COPY_OVERWRITE_HINT.sentence(CallerSurface.CORE)}",
                 details={"path": destination_resolved.relative},
                 override_hint=COPY_OVERWRITE_HINT,
             )
@@ -495,9 +491,7 @@ def copy_file(
         actor=actor,
         task_id=task_id,
         metadata={"source_path": source_resolved.relative},
-        journal_summary=(
-            f"Copied {source_resolved.relative} to {destination_resolved.relative}."
-        ),
+        journal_summary=(f"Copied {source_resolved.relative} to {destination_resolved.relative}."),
     )
     item = OperationItemResult(
         path=reported_path(handle.root, source_resolved.relative),
@@ -584,8 +578,7 @@ def move_file(
         )
     if destination_resolved.exists and not overwrite:
         raise AlreadyExistsError(
-            "destination already exists; "
-            f"{MOVE_OVERWRITE_HINT.sentence(CallerSurface.CORE)}",
+            f"destination already exists; {MOVE_OVERWRITE_HINT.sentence(CallerSurface.CORE)}",
             details={"path": destination_resolved.relative},
             override_hint=MOVE_OVERWRITE_HINT,
         )
@@ -608,9 +601,7 @@ def move_file(
             begun = journal.begin(
                 operation_type="move_file",
                 target_path=destination_resolved.relative,
-                summary=(
-                    f"Moved {source_resolved.relative} to {destination_resolved.relative}."
-                ),
+                summary=(f"Moved {source_resolved.relative} to {destination_resolved.relative}."),
                 items=[
                     PendingItem(
                         relative_path=source_resolved.relative,
@@ -787,8 +778,7 @@ def delete_file(
             if journal is not None and operation_id is not None:
                 journal.abort(operation_id)
             raise StorageError(
-                f"cannot delete file {resolved.relative}: "
-                f"{exc.strerror or type(exc).__name__}",
+                f"cannot delete file {resolved.relative}: {exc.strerror or type(exc).__name__}",
                 details={"path": resolved.relative},
             ) from exc
         fsync_directory(resolved.absolute.parent)

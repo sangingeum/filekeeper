@@ -107,11 +107,14 @@ def test_every_mutation_and_edit_tool_delegates_with_undo_metadata(
         target,
         [
             ("file_create", {"path": "created.txt", "content": "one\ntwo\n"}),
-            ("file_write", lambda previous: {
-                "path": "created.txt",
-                "content": "one\nTWO\n",
-                **_creation_hash(previous),
-            }),
+            (
+                "file_write",
+                lambda previous: {
+                    "path": "created.txt",
+                    "content": "one\nTWO\n",
+                    **_creation_hash(previous),
+                },
+            ),
             ("file_copy", {"source": "created.txt", "destination": "copied.txt"}),
             ("file_move", {"source": "copied.txt", "destination": "moved.txt"}),
             ("file_delete", {"path": "moved.txt"}),
@@ -201,10 +204,7 @@ def test_workspace_info_reports_the_package_version(target: ServerTarget) -> Non
     import tomllib
 
     pyproject = (
-        Path(__file__).resolve().parents[2]
-        / "packages"
-        / "filekeeper-mcp"
-        / "pyproject.toml"
+        Path(__file__).resolve().parents[2] / "packages" / "filekeeper-mcp" / "pyproject.toml"
     )
     with pyproject.open("rb") as handle:
         expected = str(tomllib.load(handle)["project"]["version"])
@@ -258,15 +258,12 @@ def test_workspace_list_flags_a_registration_whose_root_is_gone(tmp_path: Path) 
     assert entry["name"] == "stale"
     assert entry["root_exists"] is False
     assert any(
-        "stale" in warning and "no longer exists" in warning
-        for warning in listing["warnings"]
+        "stale" in warning and "no longer exists" in warning for warning in listing["warnings"]
     )
 
     info = result.by_name("workspace_info").structured
     assert info["workspace"]["root_exists"] is False
-    assert any(
-        "stale" in warning and "no longer exists" in warning for warning in info["warnings"]
-    )
+    assert any("stale" in warning and "no longer exists" in warning for warning in info["warnings"])
 
 
 def test_history_list_and_undo_share_one_operation_key(target: ServerTarget) -> None:
@@ -278,17 +275,17 @@ def test_history_list_and_undo_share_one_operation_key(target: ServerTarget) -> 
             (
                 "history_get",
                 lambda seen: {
-                    "operation_id": seen.by_name("history_list").structured[
-                        "operations"
-                    ][0]["operation_id"]
+                    "operation_id": seen.by_name("history_list").structured["operations"][0][
+                        "operation_id"
+                    ]
                 },
             ),
             (
                 "undo_operation",
                 lambda seen: {
-                    "operation_id": seen.by_name("history_list").structured[
-                        "operations"
-                    ][0]["operation_id"]
+                    "operation_id": seen.by_name("history_list").structured["operations"][0][
+                        "operation_id"
+                    ]
                 },
             ),
         ],
@@ -307,6 +304,4 @@ def test_history_list_and_undo_share_one_operation_key(target: ServerTarget) -> 
     undone = result.by_name("undo_operation").structured
     assert undone["ok"] is True
     assert undone["operation_id"] != operation_id
-    assert (target.root / "notes.txt").read_text(encoding="utf-8") == (
-        "alpha\nbeta\ngamma\n"
-    )
+    assert (target.root / "notes.txt").read_text(encoding="utf-8") == ("alpha\nbeta\ngamma\n")

@@ -76,9 +76,7 @@ class OverrideHint:
 def override_hint(*, core: str, cli: str, mcp: str) -> OverrideHint:
     """Build a hint whose sentence names each surface's own argument."""
 
-    return OverrideHint(
-        {CallerSurface.CORE: core, CallerSurface.CLI: cli, CallerSurface.MCP: mcp}
-    )
+    return OverrideHint({CallerSurface.CORE: core, CallerSurface.CLI: cli, CallerSurface.MCP: mcp})
 
 
 class FilekeeperError(Exception):

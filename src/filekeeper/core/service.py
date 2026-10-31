@@ -231,9 +231,7 @@ class FilekeeperService:
         if self.registered and self.handle.workspace_id is not None:
             workspace = self.owner.registry.get(self.handle.name)
             return self.owner.registry.ensure_state_dir(workspace)
-        return ensure_state_directory(
-            self.handle.state_dir, root=self.root, home=self.owner.home
-        )
+        return ensure_state_directory(self.handle.state_dir, root=self.root, home=self.owner.home)
 
     def blob_store(self) -> BlobStore:
         return BlobStore(self.state_database_path().parent / "blobs", fsync=self.config.fsync)

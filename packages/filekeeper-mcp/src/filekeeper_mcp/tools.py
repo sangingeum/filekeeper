@@ -60,6 +60,7 @@ ADDITIVE = types.ToolAnnotations(
     open_world_hint=False,
 )
 
+
 class WorkspaceSelection:
     """The workspace chosen by server start-up configuration.
 
@@ -295,8 +296,7 @@ class FilekeeperTools:
                 }
                 if not record.root_exists:
                     payload["warnings"] = [
-                        f"workspace '{record.name}' is registered at a root that "
-                        "no longer exists"
+                        f"workspace '{record.name}' is registered at a root that no longer exists"
                     ]
                 return payload
             service = self.selection.service()
@@ -925,9 +925,7 @@ class FilekeeperTools:
         """
 
         return self._run(
-            lambda service: service.undo(
-                operation_id, actor=self.actor, task_id=self.task_id
-            ),
+            lambda service: service.undo(operation_id, actor=self.actor, task_id=self.task_id),
             path=None,
         )
 
@@ -944,6 +942,7 @@ class FilekeeperTools:
             lambda service: service.undo_last(actor=self.actor, task_id=self.task_id),
             path=None,
         )
+
 
 TOOL_BINDINGS: tuple[tuple[str, types.ToolAnnotations], ...] = (
     ("workspace_list", READ_ONLY),

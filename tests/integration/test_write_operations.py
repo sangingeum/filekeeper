@@ -69,9 +69,7 @@ def test_stale_expected_hash_is_refused_without_modifying_the_file(service) -> N
     assert (service.root / "notes.txt").read_bytes() == before
     error = caught.value
     assert error.retryable is False
-    assert error.details["recovery"] == (
-        "re-read the target, then retry against its current hash"
-    )
+    assert error.details["recovery"] == ("re-read the target, then retry against its current hash")
     assert error.details["expected_hash"] == stale
     assert str(error.details["actual_hash"]).startswith("sha256:")
 

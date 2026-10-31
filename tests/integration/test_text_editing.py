@@ -41,9 +41,7 @@ def test_whitespace_normalised_match_is_reported_as_that_stage(
 ) -> None:
     _write(workspace_root, "code.py", "\tvalue = 1   \n")
 
-    result = service.replace_text(
-        "code.py", "    value = 1", "value = 2", match="first"
-    )
+    result = service.replace_text("code.py", "    value = 1", "value = 2", match="first")
 
     assert result.match_stage == "normalised"
     assert result.match_count == 1
@@ -68,9 +66,7 @@ def test_match_count_mismatch_is_a_refusal(service, workspace_root: Path) -> Non
     _write(workspace_root, "notes.txt", "x\nx\n")
 
     with pytest.raises(MatchCountMismatchError) as caught:
-        service.replace_text(
-            "notes.txt", "x", "y", match="all", expected_match_count=1
-        )
+        service.replace_text("notes.txt", "x", "y", match="all", expected_match_count=1)
 
     assert caught.value.details["actual_match_count"] == 2
     assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == "x\nx\n"
@@ -135,9 +131,7 @@ def test_an_unknown_match_policy_is_rejected(service) -> None:
 def test_replace_text_dry_run_writes_nothing(service, workspace_root: Path) -> None:
     before = (workspace_root / "notes.txt").read_bytes()
 
-    result = service.replace_text(
-        "notes.txt", "beta", "BETA", match="first", dry_run=True
-    )
+    result = service.replace_text("notes.txt", "beta", "BETA", match="first", dry_run=True)
 
     assert result.dry_run is True
     assert result.operation_id is None
@@ -186,9 +180,7 @@ def test_replace_lines_preserves_a_utf8_bom(service, workspace_root: Path) -> No
     assert (workspace_root / "bom.txt").read_bytes() == codecs.BOM_UTF8 + b"ONE\ntwo\n"
 
 
-def test_replace_lines_rejects_an_out_of_range_reference(
-    service, workspace_root: Path
-) -> None:
+def test_replace_lines_rejects_an_out_of_range_reference(service, workspace_root: Path) -> None:
     before = (workspace_root / "notes.txt").read_bytes()
 
     with pytest.raises(ValidationError):
@@ -203,9 +195,7 @@ def test_insert_lines_before_and_after(service, workspace_root: Path) -> None:
     service.insert_lines("notes.txt", 1, "zero\n", position="before")
     service.insert_lines("notes.txt", 2, "middle\n", position="after")
 
-    assert (
-        workspace_root / "notes.txt"
-    ).read_text(encoding="utf-8") == "zero\none\nmiddle\ntwo\n"
+    assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == "zero\none\nmiddle\ntwo\n"
 
 
 def test_insert_lines_at_the_end_uses_a_position_not_a_line_number(
@@ -263,6 +253,4 @@ def test_line_edit_is_undoable(service, workspace_root: Path) -> None:
 
 def test_line_edit_honours_expected_hash(service, workspace_root: Path) -> None:
     with pytest.raises(ContentConflictError):
-        service.delete_lines(
-            "notes.txt", 1, 1, expected_hash="sha256:" + "1" * 64
-        )
+        service.delete_lines("notes.txt", 1, 1, expected_hash="sha256:" + "1" * 64)

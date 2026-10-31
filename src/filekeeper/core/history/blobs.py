@@ -68,9 +68,7 @@ class BlobStore:
                 "blob is missing from the store", details={"hash": normalize_hash(digest)}
             ) from exc
         except OSError as exc:  # pragma: no cover - filesystem failure
-            raise StorageError(
-                f"cannot read blob: {exc.strerror or type(exc).__name__}"
-            ) from exc
+            raise StorageError(f"cannot read blob: {exc.strerror or type(exc).__name__}") from exc
         actual = hash_bytes(data)
         if actual != normalize_hash(digest):
             raise StorageError(
