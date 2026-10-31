@@ -21,6 +21,7 @@ import codecs
 import os
 import stat
 from pathlib import Path
+from typing import Any
 
 from ..errors import (
     AlreadyExistsError,
@@ -148,7 +149,17 @@ def _after_write(
     journal: OperationJournal | None,
     actor: str | None,
     task_id: str | None,
+    metadata: dict[str, Any] | None = None,
+    journal_summary: str | None = None,
 ) -> MutationResult:
+    """Write *data*, journaling the change when a journal is supplied.
+
+    ``journal_summary`` overrides the summary recorded in the journal without
+    changing the summary returned to the caller; ``metadata`` is merged into the
+    operation's metadata. Callers that touch more than one path use both to name
+    the other path in the durable record without reinterpreting ``target_path``.
+    """
+
     after_hash = hash_bytes(data)
     operation_id: str | None = None
     skipped: tuple[str, ...] = ()
@@ -171,12 +182,13 @@ def _after_write(
             begun = journal.begin(
                 operation_type=operation_type,
                 target_path=resolved.relative,
-                summary=f"{past_verb} {resolved.relative}.",
+                summary=journal_summary or f"{past_verb} {resolved.relative}.",
                 items=[pending],
                 actor=actor,
                 task_id=task_id,
                 before_hash=before_hash,
                 after_hash=after_hash,
+                metadata=metadata,
             )
             operation_id = begun.operation_id
             skipped = begun.skipped
@@ -453,6 +465,10 @@ def copy_file(
         journal=journal,
         actor=actor,
         task_id=task_id,
+        metadata={"source_path": source_resolved.relative},
+        journal_summary=(
+            f"Copied {source_resolved.relative} to {destination_resolved.relative}."
+        ),
     )
     item = OperationItemResult(
         path=source_resolved.relative,
@@ -593,6 +609,7 @@ def move_file(
                 task_id=task_id,
                 before_hash=destination_before,
                 after_hash=source_hash,
+                metadata={"source_path": source_resolved.relative},
             )
             operation_id = begun.operation_id
             skipped = begun.skipped

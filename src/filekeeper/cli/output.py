@@ -210,6 +210,15 @@ def history_show(record: OperationRecord) -> str:
             f"  {item.item_type:<9} {item.relative_path}  exists {exists}  "
             f"before {item.before_blob_hash or '-'}  after {item.after_blob_hash or '-'}"
         )
+    if record.metadata:
+        lines.append("metadata:")
+        for key in sorted(record.metadata):
+            value = record.metadata[key]
+            if isinstance(value, list):
+                rendered = ", ".join(str(entry) for entry in value)
+            else:
+                rendered = str(value)
+            lines.append(f"  {key}: {rendered}")
     if record.history_skipped:
         lines.append("history_skipped: " + ", ".join(record.history_skipped))
     return "\n".join(lines)

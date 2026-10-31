@@ -889,7 +889,9 @@ class FilekeeperTools:
         afterwards: the whole undo is refused with UNDO_CONFLICT and nothing is
         modified. A recorded move, copy or multi-file patch is undone as one
         operation. Undoing a create removes the file only while it still matches
-        what was created. The undo is itself recorded.
+        what was created. The undo is itself recorded; a refusal is recorded as an
+        undo_refused row carrying the conflict code and the blocking paths, and
+        that row is never offered as undoable.
         """
 
         return self._run(

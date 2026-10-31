@@ -306,3 +306,96 @@ def test_undo_record_does_not_claim_history_was_skipped(service) -> None:
     assert record.operation_type == "undo"
     assert record.history_skipped == ()
     assert "history_skipped" not in record.metadata
+
+
+def test_a_copy_journal_entry_names_its_source(service) -> None:
+    """The durable record of a copy must say what it copied from."""
+
+    result = service.copy_file("notes.txt", "copy.txt")
+    record = service.get_operation(result.operation_id or "")
+
+    assert record.operation_type == "copy_file"
+    # target_path keeps its existing meaning: the path the operation targets.
+    assert record.target_path == "copy.txt"
+    assert record.metadata["source_path"] == "notes.txt"
+    assert "notes.txt" in (record.summary or "")
+    assert "copy.txt" in (record.summary or "")
+    # Rule: caller-relative paths only, never a resolved host path.
+    assert str(service.root) not in (record.summary or "")
+    assert str(service.root) not in str(record.metadata)
+
+
+def test_a_move_journal_entry_names_its_source_like_a_copy(service) -> None:
+    """Copy and move carry the same structured source field."""
+
+    result = service.move_file("notes.txt", "renamed.txt")
+    record = service.get_operation(result.operation_id or "")
+
+    assert record.operation_type == "move_file"
+    assert record.target_path == "renamed.txt"
+    assert record.metadata["source_path"] == "notes.txt"
+    assert "notes.txt" in (record.summary or "")
+    assert "renamed.txt" in (record.summary or "")
+    assert str(service.root) not in (record.summary or "")
+    assert str(service.root) not in str(record.metadata)
+
+
+def test_a_refused_undo_leaves_a_record_that_is_not_undoable(service) -> None:
+    """A refusal is journaled with its code and paths, but stays off the undo stack."""
+
+    copied = service.copy_file("notes.txt", "copied.txt")
+    moved = service.move_file("copied.txt", "copied-renamed.txt")
+
+    with pytest.raises(UndoConflictError) as raised:
+        service.undo(copied.operation_id)
+
+    assert raised.value.code == "UNDO_CONFLICT"
+
+    refusal = service.list_history()[0]
+    assert refusal.operation_type == "undo_refused"
+    assert refusal.status == "failed"
+    assert refusal.target_path == "copied.txt"
+    assert refusal.items == ()
+    assert refusal.metadata["undone_operation"] == copied.operation_id
+    assert refusal.metadata["conflict_code"] == "UNDO_CONFLICT"
+    assert refusal.metadata["conflicting_paths"] == ["copied.txt"]
+    assert str(service.root) not in (refusal.summary or "")
+
+    # The refusal did not become the undo stack's next target: undo-last still
+    # resolves to the move, the most recent real mutation.
+    undone = service.undo_last()
+    assert undone.summary == f"Undid operation {moved.operation_id}."
+    assert (service.root / "copied.txt").is_file()
+
+    # An explicit undo of the refusal row is refused too, not executed.
+    with pytest.raises(UndoConflictError):
+        service.undo(refusal.operation_id)
+    assert [record.operation_type for record in service.list_history()].count(
+        "undo_refused"
+    ) == 2
+
+
+def test_an_old_format_journal_row_still_reads_and_undoes(service) -> None:
+    """A row written before source metadata existed degrades to an empty dict."""
+
+    result = service.copy_file("notes.txt", "legacy.txt")
+    connection = sqlite3.connect(service.history.database_path)
+    try:
+        with connection:
+            connection.execute(
+                "UPDATE operations SET metadata_json = '{}' WHERE id = ?",
+                (result.operation_id,),
+            )
+    finally:
+        connection.close()
+
+    record = service.get_operation(result.operation_id or "")
+    assert record.metadata == {}
+    assert record.history_skipped == ()
+    assert "source_path" not in record.metadata
+    assert service.list_history()[0].operation_id == result.operation_id
+    diff = service.diff_operation(result.operation_id or "")
+    assert diff.operation_id == result.operation_id
+
+    service.undo(result.operation_id)
+    assert not (service.root / "legacy.txt").exists()

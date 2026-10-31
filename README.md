@@ -298,6 +298,15 @@ The undo is itself recorded as an operation, so `history list` remains a
 truthful ledger. **Redo is deferred** — it is not half-implemented; undoing an
 undo is the supported way to go forward again.
 
+A copy or a move records the path it read from in the operation's `metadata`
+under `source_path`, and its summary names both ends. `target_path` keeps its
+meaning — the path the operation targets — so existing readers are unaffected.
+
+A refused undo is recorded too: the ledger gains an `undo_refused` row with the
+target path, the conflict code, and the paths that blocked the undo. It changed
+nothing, so it carries no items, is never offered as undoable, and `undo-last`
+skips it. Every recorded path is workspace-relative, never a resolved host path.
+
 `keeper file read` writes file content to standard output unchanged (line endings
 included). Metadata goes to stderr, or into the JSON object with `--json`.
 `--input FILE` reads replacement content from a file, avoiding shell argument

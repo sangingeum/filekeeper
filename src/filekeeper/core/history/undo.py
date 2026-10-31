@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..errors import (
+    FilekeeperError,
     HistoryUnavailableError,
     StorageError,
     UndoConflictError,
@@ -27,7 +28,14 @@ from ..errors import (
 from ..models import MutationResult, OperationItemRecord, OperationItemResult, OperationRecord
 from ..safety.atomic import atomic_write_bytes, fsync_directory
 from ..safety.hashing import hash_file
-from .journal import COMMITTED, FAILED, UNDONE, OperationJournal, PendingItem
+from .journal import (
+    COMMITTED,
+    FAILED,
+    UNDO_REFUSED,
+    UNDONE,
+    OperationJournal,
+    PendingItem,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -291,6 +299,53 @@ def _result(
     )
 
 
+def _conflicting_paths(error: UndoConflictError) -> list[str]:
+    """The refusal's paths as a list, still caller-relative as Core recorded them."""
+
+    named = error.details.get("conflicting_paths")
+    if not isinstance(named, str):
+        return []
+    return sorted({part.strip() for part in named.split(",") if part.strip()})
+
+
+def _record_refusal(
+    journal: OperationJournal,
+    record: OperationRecord,
+    error: UndoConflictError,
+    *,
+    actor: str | None,
+    task_id: str | None,
+) -> str | None:
+    """Record a refused undo attempt so the ledger shows it was tried.
+
+    A refusal changes nothing, so the row carries no items and no before/after
+    hashes. Its status is ``failed`` — the attempt did not take effect — and its
+    type keeps it out of the undo stack (:func:`latest_undoable`). The conflict
+    code and the paths that blocked the undo travel in metadata. Recording is
+    best-effort: a storage failure here must never replace the refusal the
+    caller is owed.
+    """
+
+    try:
+        begun = journal.begin(
+            operation_type=UNDO_REFUSED,
+            target_path=record.target_path,
+            summary=f"Refused to undo operation {record.operation_id}: {error.message}",
+            items=[],
+            actor=actor,
+            task_id=task_id,
+            metadata={
+                "undone_operation": record.operation_id,
+                "conflict_code": str(error.code),
+                "conflicting_paths": _conflicting_paths(error),
+            },
+        )
+        journal.abort(begun.operation_id)
+    except FilekeeperError:
+        return None
+    return begun.operation_id
+
+
 def undo_operation(
     journal: OperationJournal,
     operation_id: str,
@@ -308,7 +363,11 @@ def undo_operation(
         raise OperationNotFoundError(
             "no operation with that id in this workspace", details={"operation_id": operation_id}
         )
-    steps = _plan(journal, record)
+    try:
+        steps = _plan(journal, record)
+    except UndoConflictError as exc:
+        _record_refusal(journal, record, exc, actor=actor, task_id=task_id)
+        raise
     undo_items = _undo_items(record)
 
     begun = journal.begin(
@@ -335,8 +394,14 @@ def undo_operation(
 
 
 def latest_undoable(journal: OperationJournal, *, actor: str | None = None) -> OperationRecord:
-    clauses = ["status IN (?, ?)"]
-    parameters: list[object] = [COMMITTED, FAILED]
+    """The most recent operation this workspace may undo.
+
+    A recorded refusal changed nothing; it is not a mutation and is never
+    offered as the next undo target, so ``undo-last`` skips those rows.
+    """
+
+    clauses = ["status IN (?, ?)", "operation_type != ?"]
+    parameters: list[object] = [COMMITTED, FAILED, UNDO_REFUSED]
     if actor is not None:
         clauses.append("actor = ?")
         parameters.append(actor)

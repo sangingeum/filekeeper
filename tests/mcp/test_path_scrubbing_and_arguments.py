@@ -81,6 +81,46 @@ def test_a_relative_state_directory_stays_readable_in_details() -> None:
     assert details["operation_id"] == "op-1"
 
 
+def test_journal_metadata_carries_caller_relative_paths_only(target: ServerTarget) -> None:
+    """The new copy metadata survives the wire with no resolved host path."""
+
+    result = exercise(
+        target,
+        [
+            ("file_copy", {"source": "notes.txt", "destination": "copy.txt"}),
+            ("history_list", {}),
+        ],
+    )
+
+    record = result.by_name("history_list").structured["operations"][0]
+    assert record["metadata"]["source_path"] == "notes.txt"
+    assert "notes.txt" in record["summary"]
+    assert str(target.root) not in json.dumps(record)
+
+
+def test_refused_undo_metadata_keeps_conflicting_paths_relative(target: ServerTarget) -> None:
+    result = exercise(
+        target,
+        [
+            ("file_copy", {"source": "notes.txt", "destination": "copy.txt"}),
+            ("file_move", {"source": "copy.txt", "destination": "copy-renamed.txt"}),
+            (
+                "undo_operation",
+                lambda seen: {
+                    "operation_id": seen.by_name("file_copy").structured["operation_id"]
+                },
+            ),
+            ("history_list", {}),
+        ],
+    )
+
+    refusal = result.by_name("history_list").structured["operations"][0]
+    assert refusal["operation_type"] == "undo_refused"
+    assert refusal["metadata"]["conflict_code"] == "UNDO_CONFLICT"
+    assert refusal["metadata"]["conflicting_paths"] == ["copy.txt"]
+    assert str(target.root) not in json.dumps(refusal)
+
+
 def test_the_error_text_fallback_is_scrubbed_exactly_like_the_structured_payload() -> None:
     from filekeeper.core.errors import StorageError
 

@@ -38,6 +38,9 @@ COMMITTED = "committed"
 UNDONE = "undone"
 FAILED = "failed"
 PARTIALLY_UNDONE = "partially_undone"
+# A refused undo is recorded so the ledger shows the attempt, but it is not a
+# mutation and is never offered as undoable.
+UNDO_REFUSED = "undo_refused"
 
 
 @dataclass(frozen=True, slots=True)
@@ -424,6 +427,7 @@ __all__ = [
     "PARTIALLY_UNDONE",
     "PENDING",
     "UNDONE",
+    "UNDO_REFUSED",
     "BeginResult",
     "OperationJournal",
     "PendingItem",
