@@ -22,9 +22,10 @@ All notable changes to this project are recorded here. The format follows
 - `filekeeper-cli` 0.1.2 and `filekeeper-mcp` 0.1.2 are released together and now
   carry the same version number. Code, metadata and behaviour are unchanged from
   `filekeeper-cli` 0.1.1.
-- `filekeeper-mcp` 0.1.2 is the server's first published version. The project was
-  never released at 0.1.0; that version string existed only in the working tree,
-  so no release history is missing and no version number was reused.
+- `filekeeper-mcp` 0.1.2 is the server's first release under the shared version
+  number. Its earlier publication was 0.1.0, which remains installable and is not
+  withdrawn; 0.1.2 carries the same code with the version aligned to
+  `filekeeper-cli` 0.1.2.
 
 ## 0.1.1 — 2026-10-31
 
