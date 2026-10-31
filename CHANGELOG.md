@@ -40,6 +40,11 @@ All notable changes to this project are recorded here. The format follows
 
 - `filekeeper-cli` 0.1.3 and `filekeeper-mcp` 0.1.3 are released together and
   carry the same version number.
+- The distribution-isolation test installs the built wheels with `--no-deps` and
+  asserts the installed version against `pyproject.toml`, so it proves this build
+  rather than whichever release the index happens to satisfy. The adapter's own
+  runtime requirements are installed explicitly from its metadata. No product
+  behaviour changed.
 
 ## 0.1.2 — 2026-10-31
 

@@ -91,6 +91,14 @@ def _fresh_venv(tmp_path: Path, name: str) -> Path:
 
 
 def _install(venv: Path, *wheels: Path, no_deps: bool = False) -> None:
+    """Install built wheels.
+
+    ``no_deps`` keeps the version under test exactly the wheel just built: without
+    it, ``uv`` may satisfy the adapter's ``filekeeper-cli>=0.1,<0.2`` requirement
+    from the index, so the probe would import a previously published release
+    instead of this build. That only breaks once PyPI holds a different version in
+    the same range, i.e. at release time.
+    """
     command = [_uv(), "pip", "install", "--python", str(venv / "bin" / "python")]
     if no_deps:
         command.append("--no-deps")
@@ -98,10 +106,66 @@ def _install(venv: Path, *wheels: Path, no_deps: bool = False) -> None:
     _run(command, cwd=venv.parent)
 
 
+def _install_requirements(venv: Path, *requirements: str) -> None:
+    """Install runtime dependencies from the index, with their own dependencies."""
+    _run(
+        [
+            _uv(),
+            "pip",
+            "install",
+            "--python",
+            str(venv / "bin" / "python"),
+            *requirements,
+        ],
+        cwd=venv.parent,
+    )
+
+
 def _probe(venv: Path, source: str, tmp_path: Path, name: str) -> str:
     script = tmp_path / name
     script.write_text(source, encoding="utf-8")
     return _run([str(venv / "bin" / "python"), str(script)], cwd=tmp_path).stdout
+
+
+_INSTALLED_STATE_SOURCE = (
+    "import importlib.metadata as metadata\n"
+    "import json\n"
+    "dist = metadata.distribution({distribution!r})\n"
+    "print('dist-version', dist.version)\n"
+    "record = dist.read_text('direct_url.json')\n"
+    "source = json.loads(record).get('url') if record else 'an index (no direct_url.json)'\n"
+    "print('dist-source', source)\n"
+)
+
+
+def _assert_installed_from_build(
+    venv: Path,
+    distribution: str,
+    wheel: Path,
+    expected_version: str,
+    tmp_path: Path,
+) -> None:
+    """Guard: the installed distribution must be the wheel this run built.
+
+    A mismatch means the installer resolved the requirement from somewhere else —
+    almost always the index — and the probe would then be testing a published
+    release rather than this build. The message names the wheel and the source the
+    installed distribution actually came from.
+    """
+    output = _probe(
+        venv,
+        _INSTALLED_STATE_SOURCE.format(distribution=distribution),
+        tmp_path,
+        f"installed_state_{distribution.replace('-', '_')}.py",
+    )
+    state = dict(line.split(" ", 1) for line in output.strip().splitlines() if " " in line)
+    if state.get("dist-version") != expected_version:
+        raise AssertionError(
+            f"{distribution} is installed as {state.get('dist-version')!r} but the "
+            f"wheel just built ({wheel}) declares {expected_version!r}; the installed "
+            f"distribution came from {state.get('dist-source')!r} — the install must "
+            "name the built wheel rather than resolving from the index"
+        )
 
 
 def test_core_metadata_declares_no_third_party_dependencies(wheels: tuple[Path, Path]) -> None:
@@ -122,8 +186,12 @@ def test_installing_only_core_leaves_the_sdk_absent(
     wheels: tuple[Path, Path], tmp_path: Path
 ) -> None:
     core, _adapter = wheels
+    core_version = _project_version(PROJECT_ROOT / "pyproject.toml")
     venv = _fresh_venv(tmp_path, "core-only")
+    # --no-deps: core declares no third-party dependencies, and the install must
+    # not reach the index for anything — least of all for filekeeper itself.
     _install(venv, core, no_deps=True)
+    _assert_installed_from_build(venv, "filekeeper-cli", core, core_version, tmp_path)
 
     output = _probe(
         venv,
@@ -139,7 +207,7 @@ def test_installing_only_core_leaves_the_sdk_absent(
         "core_probe.py",
     )
 
-    assert f"core-ok {_project_version(PROJECT_ROOT / 'pyproject.toml')}" in output
+    assert f"core-ok {core_version}" in output
     assert "sdk-present False" in output
 
 
@@ -147,8 +215,26 @@ def test_installing_the_adapter_pulls_core_and_the_sdk(
     wheels: tuple[Path, Path], tmp_path: Path
 ) -> None:
     core, adapter = wheels
+    core_version = _project_version(PROJECT_ROOT / "pyproject.toml")
+    adapter_version = _project_version(ADAPTER_ROOT / "pyproject.toml")
     venv = _fresh_venv(tmp_path, "adapter")
-    _install(venv, core, adapter)
+
+    # The wheels go in with --no-deps so both come from this build: the adapter's
+    # `filekeeper-cli>=0.1,<0.2` requirement would otherwise be satisfied from the
+    # index by whatever version is published, and the probe would import that.
+    _install(venv, core, adapter, no_deps=True)
+    _assert_installed_from_build(venv, "filekeeper-cli", core, core_version, tmp_path)
+    _assert_installed_from_build(venv, "filekeeper-mcp", adapter, adapter_version, tmp_path)
+
+    # The SDK still has to be genuinely present, so install exactly the adapter's
+    # declared non-core runtime requirements from the index.
+    sdk_requirements = [
+        requirement
+        for requirement in _metadata_requirements(adapter)
+        if not requirement.startswith("filekeeper")
+    ]
+    assert sdk_requirements, "the adapter must declare its own runtime dependencies"
+    _install_requirements(venv, *sdk_requirements)
 
     output = _probe(
         venv,
@@ -164,8 +250,6 @@ def test_installing_the_adapter_pulls_core_and_the_sdk(
         "adapter_probe.py",
     )
 
-    core_version = _project_version(PROJECT_ROOT / "pyproject.toml")
-    adapter_version = _project_version(ADAPTER_ROOT / "pyproject.toml")
     assert f"adapter-ok {core_version} {adapter_version}" in output
     assert (venv / "bin" / "filekeeper-mcp").exists()
     assert (venv / "bin" / "keeper").exists()

@@ -513,6 +513,30 @@ into the tool manager directly. That is pinned by `mcp>=2.3,<3`, covered by a
 protocol test, and the failure mode is loud rather than silent: if the layout
 changes, the coded-error test fails.
 
+## The distribution-isolation proof names the wheel it built
+
+The two-distribution boundary is proved by installing real wheels into fresh
+environments. 0.1.3's first release run failed here for a reason that had nothing
+to do with the product: the adapter wheel declares `filekeeper-cli>=0.1,<0.2`, and
+the installer satisfied that requirement from the index — the published 0.1.2 —
+even though the core wheel was named in the same command. The probe then imported
+0.1.2 and the version assertion failed. The defect could only appear once PyPI
+held a different version inside the range, which is exactly release time.
+
+The install now passes `--no-deps`, so the core and the adapter under test are the
+wheels this run just built. The adapter's own runtime requirements are read from
+its wheel metadata and installed explicitly, so "the adapter pulls the SDK" is
+still proved by a real SDK import rather than by the installer's dependency
+resolution. Core alone still installs nothing from the index.
+
+Both tests then assert that the installed distribution version equals the version
+in `pyproject.toml`, and a mismatch reports the wheel path and the source the
+installed distribution actually came from. The assertion exists so a future
+installer behaviour that reaches the index fails with the wheel and the source in
+the message, instead of a bare version-string comparison. The suite is runnable
+with `UV_OFFLINE=1`, which is how the "core no longer consults PyPI" claim is
+checked.
+
 ## Deferred and accepted limitations
 
 The trial also asked for unbounded `directory_list`/`file_search` payloads, a
