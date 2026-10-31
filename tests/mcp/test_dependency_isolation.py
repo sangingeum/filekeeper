@@ -9,6 +9,7 @@ fails if the adapter's dependency is ever dropped from its metadata.
 from __future__ import annotations
 
 import subprocess
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -16,6 +17,12 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ADAPTER_ROOT = PROJECT_ROOT / "packages" / "filekeeper-mcp"
+
+
+def _project_version(pyproject: Path) -> str:
+    """The version the build will stamp, so a bump never breaks the proof."""
+    with pyproject.open("rb") as handle:
+        return str(tomllib.load(handle)["project"]["version"])
 
 
 def _uv() -> str:
@@ -70,8 +77,10 @@ def wheels(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Path]:
         [_uv(), "build", "--wheel", "--out-dir", str(adapter_dir), str(ADAPTER_ROOT)],
         cwd=output,
     )
-    core = next(core_dir.glob("filekeeper_cli-0.1.0-*.whl"))
-    adapter = next(adapter_dir.glob("filekeeper_mcp-0.1.0-*.whl"))
+    core_version = _project_version(PROJECT_ROOT / "pyproject.toml")
+    adapter_version = _project_version(ADAPTER_ROOT / "pyproject.toml")
+    core = next(core_dir.glob(f"filekeeper_cli-{core_version}-*.whl"))
+    adapter = next(adapter_dir.glob(f"filekeeper_mcp-{adapter_version}-*.whl"))
     return core, adapter
 
 
@@ -130,7 +139,7 @@ def test_installing_only_core_leaves_the_sdk_absent(
         "core_probe.py",
     )
 
-    assert "core-ok 0.1.0" in output
+    assert f"core-ok {_project_version(PROJECT_ROOT / 'pyproject.toml')}" in output
     assert "sdk-present False" in output
 
 
@@ -155,6 +164,8 @@ def test_installing_the_adapter_pulls_core_and_the_sdk(
         "adapter_probe.py",
     )
 
-    assert "adapter-ok 0.1.0 0.1.0" in output
+    core_version = _project_version(PROJECT_ROOT / "pyproject.toml")
+    adapter_version = _project_version(ADAPTER_ROOT / "pyproject.toml")
+    assert f"adapter-ok {core_version} {adapter_version}" in output
     assert (venv / "bin" / "filekeeper-mcp").exists()
     assert (venv / "bin" / "keeper").exists()

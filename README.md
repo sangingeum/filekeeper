@@ -32,7 +32,7 @@ uv tool install filekeeper-cli  # or: pip install filekeeper-cli
 keeper --help
 ```
 
-Requires Python 3.12. The published `filekeeper-cli` distribution has **no
+The published `filekeeper-cli` distribution has **no
 third-party dependencies**; it installs the `filekeeper` import package and the
 `keeper` console script. The MCP server is a separate distribution, so
 installing the CLI never pulls in the MCP SDK:

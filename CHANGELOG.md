@@ -4,6 +4,17 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.1 — 2026-10-31
+
+### Changed
+
+- Metadata-only release: no behaviour, API or dependency change. The
+  `Requires-Python` requirement moves from `>=3.11,<3.14` to `>=3.12,<3.13`, and
+  the sole Python classifier is 3.12. Version 0.1.0 remains installable on
+  Python 3.11.
+- The README no longer states a Python version. The package metadata is the single
+  home for the interpreter requirement, so a prose copy cannot drift from it.
+
 ## Unreleased
 
 ### Added
@@ -106,8 +117,6 @@ All notable changes to this project are recorded here. The format follows
   `filekeeper-cli` and an `mcp-v*` tag publishes `filekeeper-mcp`; one tag never
   uploads both distributions, so a version number is burned for exactly one
   project at a time. A manual workflow run only builds and inspects.
-- Python 3.12 is the supported interpreter: both distributions declare
-  `requires-python = ">=3.12,<3.13"` and carry only the 3.12 classifier.
 - Operation identity is `operation_id` on every surface. `history list` and
   `history show` items use the same key as mutations, diff and undo; there is no
   legacy `id` alias.
