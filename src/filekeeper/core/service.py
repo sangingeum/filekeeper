@@ -14,6 +14,7 @@ values inside results, never their fields.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from . import database, operations
@@ -50,8 +51,25 @@ from .workspace import (
     STATE_DATABASE_NAME,
     WorkspaceHandle,
     WorkspaceRegistry,
+    ensure_state_directory,
     handle_for,
 )
+
+TRANSIENT_ID_PREFIX = "ws-transient-"
+TRANSIENT_ID_LENGTH = 16
+
+
+def transient_workspace_id(root: str | Path) -> str:
+    """A stable id for the transient workspace rooted at ``root``.
+
+    Durable state is keyed by workspace id, so the id must survive a process
+    restart: it is derived from the canonical absolute root rather than drawn
+    at random.
+    """
+
+    canonical = str(Path(root).expanduser().resolve())
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return f"{TRANSIENT_ID_PREFIX}{digest[:TRANSIENT_ID_LENGTH]}"
 
 
 def init_home(home: Path | None = None) -> Path:
@@ -135,7 +153,7 @@ class Filekeeper:
             if registered is not None:
                 return FilekeeperService(handle_for(registered, self.config, self.home), self)
             transient = Workspace(
-                id=f"ws-transient-{database.uuid_token()}",
+                id=transient_workspace_id(candidate),
                 name=candidate.name or "workspace",
                 root_path=str(candidate),
                 created_at=database.utc_now(),
@@ -201,15 +219,23 @@ class FilekeeperService:
         if self.registered and self.handle.workspace_id is not None:
             workspace = self.owner.registry.get(self.handle.name)
             return self.owner.registry.ensure_state_dir(workspace)
-        state_dir = self.handle.state_dir
-        state_dir.mkdir(parents=True, exist_ok=True)
-        target = state_dir / STATE_DATABASE_NAME
-        connection = database.open_workspace_database(target)
-        connection.close()
-        return target
+        return ensure_state_directory(self.handle.state_dir, root=self.root)
 
     def blob_store(self) -> BlobStore:
         return BlobStore(self.state_database_path().parent / "blobs", fsync=self.config.fsync)
+
+    def _journal_for(self, dry_run: bool) -> OperationJournal | None:
+        """The journal a mutation will record into, or a verified ``None``.
+
+        A dry run writes no history, but it still proves that the journal can be
+        opened: a preview must never report success for a call the real
+        operation could not perform.
+        """
+
+        if dry_run:
+            self.state_database_path()
+            return None
+        return self.history
 
     # -- history ------------------------------------------------------------
     def _open_journal(self, *, create: bool) -> OperationJournal | None:
@@ -413,7 +439,7 @@ class FilekeeperService:
             encoding=encoding,
             allow_sensitive_write=allow_sensitive_write,
             dry_run=dry_run,
-            journal=None if dry_run else self.history,
+            journal=self._journal_for(dry_run),
             actor=actor,
             task_id=task_id,
         )
@@ -438,7 +464,7 @@ class FilekeeperService:
             encoding=encoding,
             allow_sensitive_write=allow_sensitive_write,
             dry_run=dry_run,
-            journal=None if dry_run else self.history,
+            journal=self._journal_for(dry_run),
             actor=actor,
             task_id=task_id,
         )
@@ -461,7 +487,7 @@ class FilekeeperService:
             expected_destination_hash=expected_destination_hash,
             allow_sensitive_write=allow_sensitive_write,
             dry_run=dry_run,
-            journal=None if dry_run else self.history,
+            journal=self._journal_for(dry_run),
             actor=actor,
             task_id=task_id,
         )
@@ -484,7 +510,7 @@ class FilekeeperService:
             overwrite=overwrite,
             allow_sensitive_write=allow_sensitive_write,
             dry_run=dry_run,
-            journal=None if dry_run else self.history,
+            journal=self._journal_for(dry_run),
             actor=actor,
             task_id=task_id,
         )
@@ -503,7 +529,7 @@ class FilekeeperService:
             path,
             expected_hash=expected_hash,
             dry_run=dry_run,
-            journal=None if dry_run else self.history,
+            journal=self._journal_for(dry_run),
             actor=actor,
             task_id=task_id,
         )
@@ -535,7 +561,7 @@ class FilekeeperService:
             expected_match_count=expected_match_count,
             allow_sensitive_write=allow_sensitive_write,
             dry_run=dry_run,
-            journal=None if dry_run else self.history,
+            journal=self._journal_for(dry_run),
             actor=actor,
             task_id=task_id,
         )
@@ -562,7 +588,7 @@ class FilekeeperService:
             expected_content=expected_content,
             expected_hash=expected_hash,
             dry_run=dry_run,
-            journal=None if dry_run else self.history,
+            journal=self._journal_for(dry_run),
             actor=actor,
             task_id=task_id,
         )
@@ -589,7 +615,7 @@ class FilekeeperService:
             expected_content=expected_content,
             expected_hash=expected_hash,
             dry_run=dry_run,
-            journal=None if dry_run else self.history,
+            journal=self._journal_for(dry_run),
             actor=actor,
             task_id=task_id,
         )
@@ -614,7 +640,7 @@ class FilekeeperService:
             expected_content=expected_content,
             expected_hash=expected_hash,
             dry_run=dry_run,
-            journal=None if dry_run else self.history,
+            journal=self._journal_for(dry_run),
             actor=actor,
             task_id=task_id,
         )
@@ -633,7 +659,7 @@ class FilekeeperService:
             patch_text,
             allow_sensitive_write=allow_sensitive_write,
             dry_run=dry_run,
-            journal=None if dry_run else self.history,
+            journal=self._journal_for(dry_run),
             actor=actor,
             task_id=task_id,
         )
@@ -652,7 +678,7 @@ class FilekeeperService:
             path,
             parents=parents,
             dry_run=dry_run,
-            journal=None if dry_run else self.history,
+            journal=self._journal_for(dry_run),
             actor=actor,
             task_id=task_id,
         )
@@ -671,7 +697,7 @@ class FilekeeperService:
             source,
             destination,
             dry_run=dry_run,
-            journal=None if dry_run else self.history,
+            journal=self._journal_for(dry_run),
             actor=actor,
             task_id=task_id,
         )
@@ -692,7 +718,7 @@ class FilekeeperService:
             recursive=recursive,
             confirm_recursive=confirm_recursive,
             dry_run=dry_run,
-            journal=None if dry_run else self.history,
+            journal=self._journal_for(dry_run),
             actor=actor,
             task_id=task_id,
         )

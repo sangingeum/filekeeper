@@ -3,10 +3,16 @@
 A workspace is a registered directory that bounds every operation. Registration
 lives in the home database; the workspace's own state directory lives in the tree
 by default so that history and blobs travel with the checkout.
+
+When the tree cannot host that directory — a read-only checkout, or a workspace
+root at ``/`` — the deployment still works: the state directory falls back to the
+global store and the response says so. An operator who named ``state_location``
+explicitly gets the failure instead, because that choice is theirs to make.
 """
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 import stat
@@ -29,6 +35,13 @@ DEFAULT_WORKSPACE_KEY: Final = "default_workspace"
 STATE_DATABASE_NAME: Final = "state.sqlite3"
 GITIGNORE_ENTRY: Final = f"{STATE_DIR_NAME}/"
 
+# Names the fallback without naming a host path: the message is rendered to
+# callers who are confined to the workspace.
+GLOBAL_FALLBACK_WARNING: Final = (
+    "the workspace root cannot host a state directory, so history is kept in "
+    "the global Filekeeper state store instead of a project-local directory"
+)
+
 
 @dataclass(frozen=True, slots=True)
 class WorkspaceHandle:
@@ -39,29 +52,134 @@ class WorkspaceHandle:
     workspace_id: str | None
     config: Config
     state_dir: Path
+    state_warning: str | None = None
 
 
-def workspace_state_dir(workspace: Workspace, config: Config, home: Path) -> Path:
-    """Where this workspace's journal and blobs live.
+@dataclass(frozen=True, slots=True)
+class StateLocation:
+    """A resolved state directory plus the warning that explains a fallback."""
+
+    directory: Path
+    warning: str | None = None
+
+
+def global_workspace_state_dir(workspace_id: str, home: Path) -> Path:
+    """The global store's directory for one workspace id."""
+
+    return Path(home) / "workspaces" / workspace_id
+
+
+def _directory_usable(directory: Path) -> bool:
+    """Whether ``directory`` exists and is writable, or can be created."""
+
+    try:
+        if directory.exists():
+            return directory.is_dir() and os.access(directory, os.W_OK | os.X_OK)
+        parent = directory.parent
+        return parent.is_dir() and os.access(parent, os.W_OK | os.X_OK)
+    except OSError:  # pragma: no cover - unreadable ancestors
+        return False
+
+
+def resolve_state_location(workspace: Workspace, config: Config, home: Path) -> StateLocation:
+    """Where this workspace's journal and blobs live, after checking usability.
 
     Project-local is the default: ``<root>/.filekeeper``. Global mode keeps one
     directory per workspace id under the home store, so projects can still be
-    attributed and pruned individually.
+    attributed and pruned individually. When the root cannot host the project
+    directory and the operator did not choose a location explicitly, the global
+    store is used and the returned warning says so.
     """
 
     if config.state_location == "global":
-        return home / "workspaces" / workspace.id
-    return Path(workspace.root_path) / STATE_DIR_NAME
+        return StateLocation(global_workspace_state_dir(workspace.id, home))
+    project_local = Path(workspace.root_path) / STATE_DIR_NAME
+    if _directory_usable(project_local):
+        return StateLocation(project_local)
+    if config.state_location_explicit:
+        # The operator asked for project-local state; do not redirect it.
+        return StateLocation(project_local)
+    return StateLocation(
+        global_workspace_state_dir(workspace.id, home), GLOBAL_FALLBACK_WARNING
+    )
+
+
+def workspace_state_dir(workspace: Workspace, config: Config, home: Path) -> Path:
+    """The state directory only, without the fallback explanation."""
+
+    return resolve_state_location(workspace, config, home).directory
+
+
+def _unattributed_history_note(workspace_id: str, state_dir: Path) -> str | None:
+    """Name earlier per-process transient journals that cannot be adopted.
+
+    Before this release a transient workspace drew a random id per process, so
+    every process wrote its own directory. Those directories carry no record of
+    their root, which makes silent adoption unsafe; they are left untouched and
+    their existence is reported instead of being hidden.
+    """
+
+    if not workspace_id.startswith("ws-transient-"):
+        return None
+    try:
+        siblings = [
+            entry
+            for entry in state_dir.parent.iterdir()
+            if entry.is_dir()
+            and entry != state_dir
+            and entry.name.startswith("ws-transient-")
+            and (entry / STATE_DATABASE_NAME).is_file()
+        ]
+    except OSError:  # pragma: no cover - unreadable store
+        return None
+    if not siblings:
+        return None
+    noun = "directory" if len(siblings) == 1 else "directories"
+    return (
+        f"{len(siblings)} earlier per-process state {noun} remain in the global store; "
+        "their history is not attributed to this workspace"
+    )
 
 
 def handle_for(workspace: Workspace, config: Config, home: Path) -> WorkspaceHandle:
+    location = resolve_state_location(workspace, config, home)
+    warning = location.warning
+    legacy = _unattributed_history_note(workspace.id, location.directory)
+    if legacy is not None:
+        warning = legacy if warning is None else f"{warning}; {legacy}"
     return WorkspaceHandle(
         name=workspace.name,
         root=Path(workspace.root_path),
         workspace_id=workspace.id,
         config=config,
-        state_dir=workspace_state_dir(workspace, config, home),
+        state_dir=location.directory,
+        state_warning=warning,
     )
+
+
+def ensure_state_directory(state_dir: Path, *, root: Path | None = None) -> Path:
+    """Create the state directory and its migrated database; return the DB path.
+
+    Every filesystem failure here is a :class:`StorageError` naming the state
+    directory the operator chose. It is never an ``INTERNAL_ERROR``, and the
+    message carries only the reason phrase, never a resolved host path.
+    """
+
+    try:
+        state_dir.mkdir(parents=True, exist_ok=True)
+        state_dir.chmod(stat.S_IRWXU)
+    except OSError as exc:
+        raise StorageError(
+            f"cannot create state directory: {exc.strerror or type(exc).__name__}",
+            details={"state_dir": str(state_dir)},
+        ) from exc
+    if root is not None and state_dir.parent == root:
+        # Only a project-local directory belongs in the tree's ignore rules.
+        ensure_gitignore_entry(root)
+    database_path = state_dir / STATE_DATABASE_NAME
+    connection = database.open_workspace_database(database_path)
+    connection.close()
+    return database_path
 
 
 def _inside_git_repository(root: Path) -> bool:
@@ -104,7 +222,14 @@ class WorkspaceRegistry:
         self.database_path = self.home / "metadata.sqlite3"
 
     def _connect(self) -> sqlite3.Connection:
-        self.home.mkdir(parents=True, exist_ok=True)
+        try:
+            self.home.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise StorageError(
+                f"cannot create the Filekeeper home directory: "
+                f"{exc.strerror or type(exc).__name__}",
+                details={"state_dir": str(self.home)},
+            ) from exc
         try:
             self.home.chmod(stat.S_IRWXU)
         except OSError:  # pragma: no cover - restricted filesystems
@@ -270,24 +395,12 @@ class WorkspaceRegistry:
         """Create the state directory and its migrated database; return the DB path.
 
         Called before the first mutation that will need durable state. It also
-        makes sure a git repository will not track the directory.
+        makes sure a git repository will not track a project-local directory.
         """
 
-        state_dir = self.state_dir_for(workspace)
-        try:
-            state_dir.mkdir(parents=True, exist_ok=True)
-            state_dir.chmod(stat.S_IRWXU)
-        except OSError as exc:
-            raise StorageError(
-                f"cannot create state directory: "
-                f"{exc.strerror or type(exc).__name__}",
-                details={"state_dir": str(state_dir)},
-            ) from exc
-        ensure_gitignore_entry(Path(workspace.root_path))
-        database_path = state_dir / STATE_DATABASE_NAME
-        connection = database.open_workspace_database(database_path)
-        connection.close()
-        return database_path
+        return ensure_state_directory(
+            self.state_dir_for(workspace), root=Path(workspace.root_path)
+        )
 
 
 def _row_to_workspace(row: sqlite3.Row) -> Workspace:

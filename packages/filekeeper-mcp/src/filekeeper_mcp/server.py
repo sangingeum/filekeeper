@@ -11,15 +11,21 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
+import mcp.types as types
 from mcp.server.mcpserver import MCPServer
 
 from filekeeper import Filekeeper
 
 from . import __version__
-from .tools import TOOL_BINDINGS, FilekeeperTools, WorkspaceSelection
+from .tools import (
+    TOOL_BINDINGS,
+    ArgumentAwareTool,
+    FilekeeperTools,
+    WorkspaceSelection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,13 +108,34 @@ def build_server(
         log_level=log_level,  # type: ignore[arg-type]
     )
     for name, hints in TOOL_BINDINGS:
-        server.add_tool(
-            getattr(tools, name),
-            name=name,
-            annotations=hints,
-            structured_output=False,
-        )
+        _register_tool(server, getattr(tools, name), name=name, hints=hints)
     return server
+
+
+def _register_tool(
+    server: MCPServer[Any],
+    function: Callable[..., Any],
+    *,
+    name: str,
+    hints: types.ToolAnnotations,
+) -> None:
+    """Register one tool, keeping argument-validation failures coded.
+
+    ``MCPServer.add_tool`` accepts only a plain function and builds the SDK's
+    base ``Tool`` for it, so the argument-aware subclass is inserted into the
+    tool manager directly. That layout is pinned by ``mcp>=2.3,<3`` and covered
+    by a protocol test: the coded envelope fails loudly if the SDK moves.
+    """
+
+    tool = ArgumentAwareTool.from_function(
+        function, name=name, annotations=hints, structured_output=False
+    )
+    schema = dict(tool.parameters)
+    # The published schema says what the subclass enforces: unknown arguments are
+    # refused instead of silently ignored.
+    schema["additionalProperties"] = False
+    tool.parameters = schema
+    server._tool_manager._tools[tool.name] = tool
 
 
 def main(argv: Sequence[str] | None = None) -> int:

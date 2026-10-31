@@ -15,9 +15,15 @@ from collections.abc import Callable
 from typing import Any
 
 import mcp.types as types
+from mcp.server.mcpserver.tools.base import Tool
+from pydantic import ValidationError as PydanticValidationError
 
 from filekeeper import Filekeeper, FilekeeperError, FilekeeperService
-from filekeeper.core.errors import LimitExceededError, NoWorkspaceSelectedError
+from filekeeper.core.errors import (
+    LimitExceededError,
+    NoWorkspaceSelectedError,
+    ValidationError,
+)
 
 from .errors import error_result, internal_error_result
 from .payloads import compact_json, jsonable, success_payload
@@ -116,6 +122,80 @@ def _ok(payload: dict[str, Any]) -> types.CallToolResult:
     )
 
 
+def _attach_state_warning(payload: dict[str, Any], service: FilekeeperService) -> None:
+    """Carry the resolved-state warning into a success payload.
+
+    A deployment that fell back to the global store, or that inherited journals
+    from an earlier per-process session, says so on every call that touches
+    history. Silence here would make the fallback invisible.
+    """
+
+    warning = service.handle.state_warning
+    if warning is None:
+        return
+    existing = payload.get("warnings")
+    merged = list(existing) if isinstance(existing, list) else []
+    if warning not in merged:
+        merged.append(warning)
+    payload["warnings"] = merged
+
+
+def _argument_error(
+    tool_name: str,
+    expected: tuple[str, ...],
+    required: tuple[str, ...],
+    arguments: dict[str, Any],
+) -> ValidationError:
+    """Build a coded error for arguments that do not match the published schema."""
+
+    missing = [name for name in required if name not in arguments]
+    unexpected = [name for name in arguments if name not in expected]
+    clauses: list[str] = []
+    if missing:
+        clauses.append("missing required argument(s) " + ", ".join(f"'{n}'" for n in missing))
+    if unexpected:
+        clauses.append("unexpected argument(s) " + ", ".join(f"'{n}'" for n in unexpected))
+    detail = "; ".join(clauses) if clauses else "arguments did not match the tool schema"
+    expected_text = ", ".join(f"'{name}'" for name in expected)
+    return ValidationError(
+        f"invalid arguments for {tool_name}: {detail}; expected {expected_text}",
+        details={
+            "tool": tool_name,
+            "expected": list(expected),
+            "missing": missing,
+            "unexpected": unexpected,
+        },
+    )
+
+
+class ArgumentAwareTool(Tool):
+    """A tool whose argument-validation failures keep the error taxonomy.
+
+    The SDK validates arguments before the handler runs, so an argument mistake
+    surfaces as prose and carries no code. This subclass intercepts that one step
+    and renders the failure in the same envelope as every other Filekeeper error.
+    """
+
+    async def run(
+        self,
+        arguments: dict[str, Any],
+        context: Any,
+        convert_result: bool = False,
+    ) -> Any:
+        fields = self.fn_metadata.arg_model.model_fields
+        expected = tuple(field.alias or name for name, field in fields.items())
+        required = tuple(
+            field.alias or name for name, field in fields.items() if field.is_required()
+        )
+        try:
+            self.fn_metadata.validate_arguments(arguments)
+        except PydanticValidationError:
+            return error_result(
+                _argument_error(self.name, expected, required, arguments), host_paths=()
+            )
+        return await super().run(arguments, context, convert_result=convert_result)
+
+
 class FilekeeperTools:
     """The tool surface. All filesystem work happens inside Core."""
 
@@ -150,6 +230,7 @@ class FilekeeperTools:
             logger.exception("unhandled failure in an MCP tool")
             return internal_error_result()
         payload = build(result) if build is not None else success_payload(result)
+        _attach_state_warning(payload, service)
         return _ok(payload)
 
     def _audit(self) -> dict[str, str]:

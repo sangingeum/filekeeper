@@ -138,7 +138,13 @@ def uuid_token() -> str:
 def connect(path: Path) -> sqlite3.Connection:
     """Open a SQLite database with durable, foreign-key-enforcing settings."""
 
-    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise StorageError(
+            f"cannot create state directory: {exc.strerror or type(exc).__name__}",
+            details={"state_dir": str(path.parent)},
+        ) from exc
     try:
         os.chmod(path.parent, stat.S_IRWXU)
     except OSError:  # pragma: no cover - restricted filesystems

@@ -408,11 +408,30 @@ class _Context:
             )
         return self._service
 
+    def state_warnings(self) -> tuple[str, ...]:
+        """Warnings that explain where durable state went for this workspace."""
+
+        if self._service is None:
+            return ()
+        warning = self._service.handle.state_warning
+        return () if warning is None else (warning,)
+
     def emit(self, payload: dict[str, object], text: str) -> None:
+        warnings = self.state_warnings()
+        if warnings:
+            existing = payload.get("warnings")
+            merged = list(existing) if isinstance(existing, list) else []
+            for warning in warnings:
+                if warning not in merged:
+                    merged.append(warning)
+            payload = {**payload, "warnings": merged}
         if self.as_json:
             output.print_json(payload)
-        elif text:
+            return
+        if text:
             sys.stdout.write(text if text.endswith("\n") else text + "\n")
+        for warning in warnings:
+            sys.stderr.write(f"warning: {warning}\n")
 
 
 def _content_from_args(args: argparse.Namespace) -> str:

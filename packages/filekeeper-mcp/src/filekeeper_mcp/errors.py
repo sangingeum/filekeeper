@@ -5,6 +5,13 @@ error code and the caller's own path survive; host filesystem paths do not. A
 resolved host path is useful to nobody outside this machine and can leak the shape
 of the tree the server is confined to.
 
+Scrubbing works on path boundaries, not substrings. A location is replaced only
+where it starts a token and ends at a separator or the end of the token, so a
+relative path such as ``tmp/notes/missing.txt`` keeps every slash and a message
+that legitimately contains ``a/b`` is untouched. A location that is itself a bare
+separator — the workspace root ``/`` — is never scrubbed: replacing it would
+destroy every slash in the payload.
+
 The envelope is the same one the CLI emits: ``{"ok": false, "error": {...}}``
 with no fields beside ``ok`` and ``error`` at the top level. The caller's path
 travels inside ``error.details.path``, where Core already records it.
@@ -24,20 +31,38 @@ from .payloads import compact_json
 
 # Path-like strings that begin a token. Relative paths such as ``src/main.py`` are
 # left alone because the character before the slash is part of a word.
-_ABSOLUTE_POSIX = re.compile(r"(?<![\w:/])/(?:[^\s\"',;:()\[\]]+)")
-_ABSOLUTE_WINDOWS = re.compile(r"\b[A-Za-z]:\\[^\s\"',;:()\[\]]+")
+_ABSOLUTE_POSIX = re.compile(r"(?<![\w:>/])/(?:[^\s\"\',;:()\[\]]+)")
+_ABSOLUTE_WINDOWS = re.compile(r"(?<!<)\b[A-Za-z]:\\[^\s\"\',;:()\[\]]+")
 
 # Detail keys that only ever carry a server-side location.
-_LOCATION_KEYS = frozenset({"root", "state_dir", "home", "database", "path_absolute"})
+_LOCATION_KEYS = frozenset({"root", "home", "database", "path_absolute"})
+
+# Locations the operator supplied and may need verbatim to fix the deployment.
+# They are reported as chosen, not scrubbed.
+_UNSCRUBBED_DETAIL_KEYS = frozenset({"state_dir"})
+
+
+def _location_pattern(location: str) -> re.Pattern[str]:
+    """A pattern matching one location as a whole path token."""
+
+    escaped = re.escape(location)
+    return re.compile(r"(?<![\w./\\-])" + escaped + r"(?=$|[\s\"',;:)\]}/\\])")
 
 
 def scrub_text(text: str, host_paths: Iterable[str]) -> str:
     """Remove host locations from a message while keeping its meaning."""
 
     cleaned = text
-    for location in sorted(host_paths, key=len, reverse=True):
-        if location:
-            cleaned = cleaned.replace(location, "<host-path>")
+    locations: list[str] = []
+    for location in host_paths:
+        candidate = location.rstrip("/\\") if location else ""
+        # A bare separator (the workspace root ``/``) and one-character names are
+        # never locations: replacing either would corrupt unrelated text.
+        if len(candidate) < 2:
+            continue
+        locations.append(candidate)
+    for location in sorted(set(locations), key=len, reverse=True):
+        cleaned = _location_pattern(location).sub("<host-path>", cleaned)
     cleaned = _ABSOLUTE_WINDOWS.sub("<host-path>", cleaned)
     return _ABSOLUTE_POSIX.sub("<host-path>", cleaned)
 
@@ -65,11 +90,14 @@ def error_payload(
     """
 
     locations = tuple(host_paths)
-    details = {
-        key: _scrub_value(value, locations)
-        for key, value in error.details.items()
-        if key not in _LOCATION_KEYS
-    }
+    details: dict[str, Any] = {}
+    for key, value in error.details.items():
+        if key in _LOCATION_KEYS:
+            continue
+        if key in _UNSCRUBBED_DETAIL_KEYS:
+            details[key] = value
+            continue
+        details[key] = _scrub_value(value, locations)
     error_body: dict[str, Any] = {
         "code": str(error.code),
         "message": scrub_text(error.message, locations),

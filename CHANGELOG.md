@@ -4,6 +4,43 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.1.3 — 2026-10-31
+
+### Fixed
+
+- A workspace whose root cannot host `.filekeeper` — most visibly `--root /` —
+  can mutate again. 0.1.2 shipped a deployment that could not write at `--root /`:
+  the state directory was created with an unguarded `mkdir`, so the first
+  journaling mutation failed as `INTERNAL_ERROR` with an absolute host path in
+  the message, while `dry_run` still reported success. State-directory
+  construction is now a `STORAGE_ERROR` everywhere it happens, and the resolved
+  location falls back to the global store — with a warning in the response —
+  when the root cannot host a project-local directory and the operator left
+  `state_location` at its default. An explicit `state_location` is honoured and
+  fails loudly instead. The check runs before any filesystem change, so a
+  mutation that cannot journal no longer reports failure after creating
+  something, and a dry run verifies the journal it would need before saying yes.
+- MCP error documents no longer lose every separator when the workspace root is
+  `/`. Scrubbing treated `/` as a host path and replaced it everywhere; a bare
+  separator is no longer a location, and a location is replaced only as a whole
+  path token. `error.details.state_dir` is reported as the operator chose it,
+  because it is the location they must fix.
+- A transient workspace (`--root`) derives its id from the canonical root
+  instead of drawing one per process, so with global state `history_list`,
+  `history_diff` and `undo_operation` see work done by an earlier process, and a
+  restart no longer fragments the journal. State directories left by 0.1.2's
+  per-process ids are not adopted silently: their existence is reported in the
+  response warning.
+- A wrong argument name on an MCP tool returns `INVALID_ARGUMENT` naming the
+  expected arguments, instead of the SDK's raw validation text with no code.
+  The published schema marks unknown arguments as refused, matching what the
+  server enforces.
+
+### Changed
+
+- `filekeeper-cli` 0.1.3 and `filekeeper-mcp` 0.1.3 are released together and
+  carry the same version number.
+
 ## 0.1.2 — 2026-10-31
 
 ### Added

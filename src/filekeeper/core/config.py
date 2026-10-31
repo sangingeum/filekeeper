@@ -40,6 +40,11 @@ class Config:
     max_history_blob_bytes: int = 4 * 1024 * 1024
     fsync: bool = True
     state_location: str = "project"
+    # True only when the configuration file named ``state_location`` explicitly.
+    # A workspace whose root cannot host its state directory may fall back to the
+    # global store when the setting was left at the default, but an explicit
+    # operator choice is honoured and fails loudly instead of being redirected.
+    state_location_explicit: bool = False
 
     def __post_init__(self) -> None:
         if self.state_location not in {"project", "global"}:
@@ -93,13 +98,14 @@ def load_config(home: Path) -> Config:
     if not isinstance(section, dict):
         raise StorageError("configuration file must contain a table", details={"path": str(path)})
 
-    known = {field_info.name for field_info in fields(Config)}
+    known = {field_info.name for field_info in fields(Config)} - {"state_location_explicit"}
     values: dict[str, object] = {}
     for key, value in section.items():
         if key in known:
             values[key] = value
     try:
-        return Config(**values)  # type: ignore[arg-type]
+        explicit = "state_location" in section
+        return Config(**values, state_location_explicit=explicit)  # type: ignore[arg-type]
     except TypeError as exc:
         raise StorageError(
             f"invalid configuration value: {exc}", details={"path": str(path)}

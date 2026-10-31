@@ -462,3 +462,68 @@ independent: the MCP server can ship a protocol fix without moving the Core
 version, and the Core can release without republishing an unchanged server. The
 manual workflow trigger builds and inspects both artefact sets and uploads
 neither, because a manual run carries no tag to prove which version is intended.
+
+## State falls back when the workspace root cannot host it
+
+The first deployment tried with `--root /` could not mutate anything. The journal
+wanted `/.filekeeper`, the kernel refused it, the bare `mkdir` in
+`state_database_path` let the `OSError` escape, and the caller received
+`INTERNAL_ERROR` quoting an absolute host path. Dry runs still said yes because a
+dry run never opened the journal, so the tool previewed work it could not perform.
+
+Settled as: every state-directory construction raises `STORAGE_ERROR`, and the
+location is resolved once, before any operation runs. `<root>/.filekeeper` is
+used when it is usable. When it is not, and `config.toml` did not name
+`state_location` explicitly, the global store (`<home>/workspaces/<id>/`) is used
+and the success payload carries a warning saying so. An explicit choice is
+honoured and fails with `STORAGE_ERROR` naming `details.state_dir` — the operator
+made that choice, so redirecting it silently would be worse than refusing. A dry
+run opens the journal before reporting, because a preview that cannot be
+performed is a lie. `details.state_dir` stays verbatim in the MCP envelope: it is
+an operator-supplied location and the thing they need in order to fix the
+deployment, so it is not scrubbed like a host path.
+
+## A transient workspace identity is derived from its root
+
+Per-workspace state is keyed by workspace id. A transient `--root` workspace
+used to draw `ws-transient-<random>` per process, so with global state every
+process wrote its own journal and history did not survive a restart. The id is
+now a truncated SHA-256 of the canonical absolute root, which makes the same root
+map to the same workspace across processes without a registry entry.
+
+Existing random-id directories are not migrated automatically. The workspace
+database records no root path, so there is nothing to match a legacy directory
+against: adopting one would be a guess, and guessing could attach another root's
+history to this one. They are left untouched on disk and the response warning
+reports how many exist, so nothing is orphaned silently; an operator who wants
+that history can point `state_location` at it deliberately.
+
+## Argument validation keeps the error taxonomy
+
+The MCP SDK validates a tool's arguments before the handler runs. That failure
+was prose — `1 validation error for file_copyArguments` — with no code, so an
+agent could not branch on its own mistake. The server now registers each tool as
+a subclass of the SDK's `Tool` that intercepts argument validation and renders
+`INVALID_ARGUMENT` with the expected arguments, the missing required ones and the
+unexpected ones. The published schema also marks unknown arguments as refused.
+
+The SDK exposes no public way to register a `Tool` subclass; `add_tool` accepts a
+function and builds the base `Tool` itself. The coded tool is therefore inserted
+into the tool manager directly. That is pinned by `mcp>=2.3,<3`, covered by a
+protocol test, and the failure mode is loud rather than silent: if the layout
+changes, the coded-error test fails.
+
+## Deferred and accepted limitations
+
+The trial also asked for unbounded `directory_list`/`file_search` payloads, a
+last-N-lines read, rename-plus-edit, patches that create or delete files, a
+single copy of the payload in `content[0].text` and `structuredContent`, and
+context lines in `content_search`. None is fixed in 0.1.3. The duplicated
+envelope is **accepted**: `structuredContent` is the protocol's structured
+channel and the text block is what older hosts read, so keeping both is
+compatible behaviour, not an oversight. The rest are **deferred**: bounding and
+paging listings needs a cursor or limit contract across CLI and MCP; last-N-lines
+needs an end-relative range that does not conflict with "out-of-range is refused";
+rename-plus-edit and file-creating/deleting patches are new operation shapes with
+their own undo semantics; and context lines change the match result shape. They
+are the next round's starting point, not silent gaps.
