@@ -4,7 +4,7 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 0.1.8 — 2026-10-31
 
 ### Added
 
@@ -216,7 +216,7 @@ changes ship in 0.1.6; no 0.1.5 artefact reached users.
 - The README no longer states a Python version. The package metadata is the single
   home for the interpreter requirement, so a prose copy cannot drift from it.
 
-## Unreleased
+## 0.1.0 — 2026-10-31
 
 ### Added
 
