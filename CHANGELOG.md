@@ -4,6 +4,27 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- `workspace_list` and `workspace_info` now report `root_exists` for every
+  registration, so a workspace whose root is gone is visible instead of looking
+  like an ordinary default. A listing that contains one also carries a warning
+  naming that workspace. `keeper workspace remove` already removed a stale
+  registration without touching files and is now covered by a test.
+- `file_replace_text`'s `match` parameter is a two-value enum in the published
+  MCP tool schema and is described as the replacement policy, so a caller sees
+  `first` and `all` before the call instead of learning them from a refusal.
+
+### Fixed
+
+- Reported paths are unambiguous when the workspace root is `/`. Read and info
+  results, read-many entries, search results, directory listings, copy/move
+  paths, and history target and item paths all keep their leading `/`, so the
+  reported string is exactly the absolute path. Every other root is unchanged,
+  and history rows are rendered when read rather than migrated.
+
 ## 0.1.7 — 2026-10-31
 
 ### Fixed

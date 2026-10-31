@@ -28,7 +28,7 @@ from ..models import (
     PathInfo,
     ReadManyEntry,
 )
-from ..paths import resolve_path
+from ..paths import reported_path, resolve_path
 from ..safety.hashing import hash_file
 from ..safety.textdata import (
     BINARY_SAMPLE_SIZE,
@@ -136,7 +136,7 @@ def read_file(
     next_start_line = last + 1 if truncated and last == loaded_line_count else None
 
     return FileReadResult(
-        path=resolved.relative,
+        path=resolved.reported,
         content=content,
         start_line=first,
         end_line=last,
@@ -265,7 +265,7 @@ def list_directory(
                     raise storage_failure("inspect", relative, exc) from exc
                 entries.append(
                     DirectoryEntry(
-                        path=relative,
+                        path=reported_path(handle.root, relative),
                         name=child.name,
                         kind=kind,
                         size_bytes=size_bytes,
@@ -277,7 +277,7 @@ def list_directory(
 
     add(base, 0)
     return DirectoryListing(
-        path=resolved.relative or ".",
+        path=resolved.reported,
         entries=tuple(entries),
         truncated=truncated,
         max_entries=limit,
@@ -305,7 +305,7 @@ def get_file_info(handle: WorkspaceHandle, path: str) -> PathInfo:
         kind = "other"
 
     base = PathInfo(
-        path=resolved.relative,
+        path=resolved.reported,
         kind=kind,
         size_bytes=info.st_size,
         mode=info.st_mode & 0o7777,
@@ -366,5 +366,5 @@ def get_file_hash(handle: WorkspaceHandle, path: str) -> str:
 def file_exists(handle: WorkspaceHandle, path: str) -> ExistsResult:
     resolved = resolve_path(handle.root, path, state_dir=handle.state_dir)
     if not resolved.exists:
-        return ExistsResult(path=resolved.relative, exists=False)
-    return ExistsResult(path=resolved.relative, exists=True, kind=resolved.kind)
+        return ExistsResult(path=resolved.reported, exists=False)
+    return ExistsResult(path=resolved.reported, exists=True, kind=resolved.kind)

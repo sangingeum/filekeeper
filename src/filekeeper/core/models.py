@@ -24,6 +24,7 @@ class Workspace:
     root_path: str
     created_at: str
     updated_at: str
+    root_exists: bool = True
 
 
 @dataclass(frozen=True, slots=True)

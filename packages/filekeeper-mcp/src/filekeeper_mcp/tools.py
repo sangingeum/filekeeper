@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Annotated, Any, Literal
 
 import mcp.types as types
 from mcp.server.mcpserver.tools.base import Tool
+from pydantic import Field
 from pydantic import ValidationError as PydanticValidationError
 
 from filekeeper import Filekeeper, FilekeeperError, FilekeeperService
@@ -253,11 +254,19 @@ class FilekeeperTools:
         """
 
         def build(workspaces: Any) -> dict[str, Any]:
-            return {
+            payload: dict[str, Any] = {
                 "ok": True,
                 "default_workspace": self.selection.app.registry.get_default_name(),
                 "workspaces": jsonable(workspaces),
             }
+            warnings = [
+                f"workspace '{workspace.name}' is registered at a root that no longer exists"
+                for workspace in workspaces
+                if not workspace.root_exists
+            ]
+            if warnings:
+                payload["warnings"] = warnings
+            return payload
 
         return self._run(lambda _service: self.selection.app.list_workspaces(), build=build)
 
@@ -276,7 +285,7 @@ class FilekeeperTools:
             if workspace is not None:
                 record = app.get_workspace(workspace)
                 is_default = app.registry.get_default_name() == record.name
-                return {
+                payload: dict[str, Any] = {
                     "ok": True,
                     "version": __version__,
                     "workspace": jsonable(record),
@@ -284,6 +293,12 @@ class FilekeeperTools:
                     "default": is_default,
                     "registered": True,
                 }
+                if not record.root_exists:
+                    payload["warnings"] = [
+                        f"workspace '{record.name}' is registered at a root that "
+                        "no longer exists"
+                    ]
+                return payload
             service = self.selection.service()
             handle = service.handle
             return {
@@ -294,6 +309,7 @@ class FilekeeperTools:
                     "name": service.name,
                     "id": handle.workspace_id,
                     "root_path": str(service.root),
+                    "root_exists": service.root.is_dir(),
                 },
                 "registered": service.registered,
             }
@@ -320,7 +336,9 @@ class FilekeeperTools:
         truncated, truncation_reason and next_start_line say where to resume. A
         UTF-8 byte-order mark is preserved and line endings are returned exactly
         as stored. Binary content is refused with BINARY_CONTENT_REFUSED unless
-        an encoding is named. Read-only; no history is recorded.
+        an encoding is named. Read-only; no history is recorded. With a
+        workspace rooted at the filesystem root, the reported path keeps its
+        leading '/' so it is exactly the absolute path.
         """
 
         return self._run(
@@ -396,7 +414,9 @@ class FilekeeperTools:
         """Report metadata for one path, including hash, encoding and newline for text.
 
         Read-only. The content_hash is what the guarded mutating tools accept as
-        expected_hash. Symlink metadata describes the link, not its target.
+        expected_hash. Symlink metadata describes the link, not its target. With
+        a workspace rooted at the filesystem root, the reported path keeps its
+        leading '/' so it is exactly the absolute path.
         """
 
         return self._run(lambda service: service.get_file_info(path), path=path)
@@ -655,7 +675,10 @@ class FilekeeperTools:
         path: str,
         old: str,
         new: str,
-        match: str,
+        match: Annotated[
+            Literal["first", "all"],
+            Field(description="replacement policy: 'first' or 'all'"),
+        ],
         expected_hash: str | None = None,
         expected_content: str | None = None,
         expected_match_count: int | None = None,
@@ -830,7 +853,9 @@ class FilekeeperTools:
         Read-only. path narrows to operations touching that workspace-relative
         path; actor and task_id are filters, not authority, and never change what
         a mutation records. limit is capped at 200. Returns operation ids usable
-        with history_get, history_diff and undo_operation.
+        with history_get, history_diff and undo_operation. Paths are rendered
+        when read: a workspace rooted at the filesystem root reports target and
+        item paths with their leading '/' so they are absolute.
         """
 
         def build(operations: Any) -> dict[str, Any]:

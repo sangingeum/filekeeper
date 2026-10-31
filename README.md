@@ -139,6 +139,16 @@ If the workspace is a git repository, Filekeeper adds `.filekeeper/` to
 `.gitignore` when it creates the state directory. Outside a repository it writes
 nothing.
 
+**Reported paths when the root is `/`.** Result paths are normally
+workspace-relative, so they are the same whichever tree holds them. With a root
+of `/` that form is indistinguishable from a repository-relative path, so every
+reported path keeps its leading `/` and is exactly the absolute path: read
+results, `file_info`, `file_read_many` entries, search results, directory
+listings, copy/move result paths, and history target and item paths. Every other
+root is unchanged, byte for byte. History rows are stored relative and rendered
+when read, so existing records display correctly without a migration. Error
+envelopes do not change.
+
 ## Durability guarantees, in plain words
 
 - **One file, replaced at a time, is atomic.** A whole-file write goes to a

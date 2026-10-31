@@ -39,7 +39,7 @@ from ..errors import (
 )
 from ..history.journal import OperationJournal, PendingItem
 from ..models import MutationResult, OperationItemResult, as_dry_run
-from ..paths import ResolvedPath, ensure_parent_directory, resolve_path
+from ..paths import ResolvedPath, ensure_parent_directory, reported_path, resolve_path
 from ..safety.atomic import atomic_write_bytes, fsync_directory
 from ..safety.hashing import format_digest, hash_bytes, hash_file, hashes_match, normalize_hash
 from ..safety.sensitive import sensitive_reason
@@ -237,7 +237,7 @@ def _after_write(
 
     result = MutationResult(
         workspace=handle.name,
-        path=resolved.relative,
+        path=resolved.reported,
         changed=True,
         before_hash=before_hash,
         after_hash=after_hash,
@@ -250,7 +250,7 @@ def _after_write(
         warnings=warnings,
         items=(
             OperationItemResult(
-                path=resolved.relative,
+                path=resolved.reported,
                 change=change,  # type: ignore[arg-type]
                 before_hash=before_hash,
                 after_hash=after_hash,
@@ -500,7 +500,7 @@ def copy_file(
         ),
     )
     item = OperationItemResult(
-        path=source_resolved.relative,
+        path=reported_path(handle.root, source_resolved.relative),
         change="unchanged",
         before_hash=hash_bytes(data),
         after_hash=hash_bytes(data),
@@ -677,7 +677,7 @@ def move_file(
 
     result = MutationResult(
         workspace=handle.name,
-        path=destination_resolved.relative,
+        path=destination_resolved.reported,
         changed=True,
         before_hash=source_hash,
         after_hash=after_hash,
@@ -691,13 +691,13 @@ def move_file(
         warnings=warnings,
         items=(
             OperationItemResult(
-                path=source_resolved.relative,
+                path=source_resolved.reported,
                 change="moved",
                 before_hash=source_hash,
                 after_hash=None,
             ),
             OperationItemResult(
-                path=destination_resolved.relative,
+                path=destination_resolved.reported,
                 change="created",
                 before_hash=destination_before,
                 after_hash=after_hash,
@@ -797,7 +797,7 @@ def delete_file(
 
     result = MutationResult(
         workspace=handle.name,
-        path=resolved.relative,
+        path=resolved.reported,
         changed=True,
         before_hash=before_hash,
         after_hash=None,
@@ -807,7 +807,7 @@ def delete_file(
         dry_run=dry_run,
         items=(
             OperationItemResult(
-                path=resolved.relative,
+                path=resolved.reported,
                 change="deleted",
                 before_hash=before_hash,
                 after_hash=None,

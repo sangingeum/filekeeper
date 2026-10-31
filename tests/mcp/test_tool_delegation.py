@@ -232,7 +232,41 @@ def test_workspace_list_reports_a_registered_workspace(tmp_path: Path) -> None:
     payload = result.by_name("workspace_list").structured
 
     assert [workspace["name"] for workspace in payload["workspaces"]] == ["project"]
+    assert payload["workspaces"][0]["root_exists"] is True
     assert payload["default_workspace"] is None
+
+
+def test_workspace_list_flags_a_registration_whose_root_is_gone(tmp_path: Path) -> None:
+    import shutil
+
+    from harness import ServerTarget
+
+    from filekeeper import Filekeeper
+
+    root = tmp_path / "gone"
+    root.mkdir()
+    home = tmp_path / "home"
+    Filekeeper(home=home).create_workspace("stale", root)
+    shutil.rmtree(root)
+
+    result = exercise(
+        ServerTarget(root=None, home=home),
+        [("workspace_list", {}), ("workspace_info", {"workspace": "stale"})],
+    )
+    listing = result.by_name("workspace_list").structured
+    [entry] = listing["workspaces"]
+    assert entry["name"] == "stale"
+    assert entry["root_exists"] is False
+    assert any(
+        "stale" in warning and "no longer exists" in warning
+        for warning in listing["warnings"]
+    )
+
+    info = result.by_name("workspace_info").structured
+    assert info["workspace"]["root_exists"] is False
+    assert any(
+        "stale" in warning and "no longer exists" in warning for warning in info["warnings"]
+    )
 
 
 def test_history_list_and_undo_share_one_operation_key(target: ServerTarget) -> None:

@@ -15,7 +15,7 @@ from pathlib import Path
 
 from ..errors import FilekeeperError, InvalidPatternError, ValidationError, storage_failure
 from ..models import ContentMatch, ContentSearchResult, PathSearchResult
-from ..paths import resolve_path
+from ..paths import reported_path, resolve_path
 from ..safety.textdata import decode_bytes, looks_binary
 from ..workspace import WorkspaceHandle
 
@@ -94,10 +94,10 @@ def search_files(
             break
         relative = _relative(handle, candidate)
         if _matches_glob(relative, candidate.name, glob):
-            matches.append(relative)
+            matches.append(reported_path(handle.root, relative))
 
     return PathSearchResult(
-        path=resolved.relative or ".",
+        path=resolved.reported,
         glob=glob,
         paths=tuple(matches),
         truncated=truncated,
@@ -179,7 +179,7 @@ def search_content(
                 column = index + 1
             matches.append(
                 ContentMatch(
-                    path=relative,
+                    path=reported_path(handle.root, relative),
                     line_number=number,
                     line=line,
                     column=column,
@@ -189,7 +189,7 @@ def search_content(
             break
 
     return ContentSearchResult(
-        path=resolved.relative or ".",
+        path=resolved.reported,
         query=query,
         regex=regex,
         matches=tuple(matches),

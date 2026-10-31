@@ -434,10 +434,12 @@ class WorkspaceRegistry:
 
 
 def _row_to_workspace(row: sqlite3.Row) -> Workspace:
+    root_path = str(row["root_path"])
     return Workspace(
         id=str(row["id"]),
         name=str(row["name"]),
-        root_path=str(row["root_path"]),
+        root_path=root_path,
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
+        root_exists=Path(root_path).is_dir(),
     )

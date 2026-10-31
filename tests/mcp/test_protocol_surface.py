@@ -104,3 +104,12 @@ def test_schemas_require_the_arguments_a_caller_cannot_guess(target: ServerTarge
     assert "start_line" in advertised["file_replace_lines"].input_schema["properties"]
     assert "expected_hash" in advertised["file_write"].input_schema["properties"]
     assert "dry_run" in advertised["file_write"].input_schema["properties"]
+
+
+def test_replace_text_schema_publishes_the_match_policy(target: ServerTarget) -> None:
+    advertised = {tool.name: tool for tool in exercise(target, []).tools}
+
+    match = advertised["file_replace_text"].input_schema["properties"]["match"]
+    assert set(match["enum"]) == {"first", "all"}
+    assert len(match["enum"]) == 2
+    assert match.get("description") == "replacement policy: 'first' or 'all'"

@@ -51,7 +51,7 @@ from ..models import (
     PatchHunkResult,
     as_dry_run,
 )
-from ..paths import ResolvedPath, ensure_parent_directory, resolve_path
+from ..paths import ResolvedPath, ensure_parent_directory, reported_path, resolve_path
 from ..safety.atomic import atomic_write_bytes, fsync_directory
 from ..safety.hashing import hash_bytes, hashes_match, normalize_hash
 from ..safety.textdata import TextProfile, decode_bytes, encode_text
@@ -1123,7 +1123,7 @@ def apply_patch(
 
     file_results = tuple(
         PatchFileResult(
-            path=plan.relative,
+            path=reported_path(handle.root, plan.relative),
             change=plan.change,
             applied=True,
             before_hash=plan.before_hash,
@@ -1134,7 +1134,7 @@ def apply_patch(
     )
     item_results = tuple(
         OperationItemResult(
-            path=plan.relative,
+            path=reported_path(handle.root, plan.relative),
             change=plan.change,
             before_hash=plan.before_hash,
             after_hash=plan.after_hash,
@@ -1147,7 +1147,7 @@ def apply_patch(
         return as_dry_run(
             MutationResult(
                 workspace=handle.name,
-                path=primary.relative,
+                path=reported_path(handle.root, primary.relative),
                 changed=True,
                 before_hash=primary.before_hash,
                 after_hash=primary.after_hash,
@@ -1240,7 +1240,7 @@ def apply_patch(
 
     return MutationResult(
         workspace=handle.name,
-        path=primary.relative,
+        path=reported_path(handle.root, primary.relative),
         changed=True,
         before_hash=primary.before_hash,
         after_hash=primary.after_hash,

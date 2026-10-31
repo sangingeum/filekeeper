@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 
 from filekeeper.cli import exit_codes
@@ -290,3 +291,47 @@ def test_recursive_delete_warning_states_recoverable_but_not_atomic(
     assert "never atomic across the tree" in out
     assert "operation_id: op_" in out
     assert "recoverable only once history lands" not in out
+
+
+def test_workspace_list_and_show_mark_a_missing_root(
+    run_cli, workspace_root: Path
+) -> None:
+    run_cli("workspace", "create", "project", str(workspace_root))
+    run_cli("workspace", "use", "project")
+    shutil.rmtree(workspace_root)
+
+    code, out, _ = run_cli("--json", "workspace", "list")
+    assert code == exit_codes.SUCCESS
+    payload = json.loads(out)
+    [entry] = payload["workspaces"]
+    assert entry["root_exists"] is False
+    assert payload["warnings"] == [
+        "workspace 'project' is registered at a root that no longer exists"
+    ]
+
+    code, out, _ = run_cli("workspace", "list")
+    assert code == exit_codes.SUCCESS
+    assert "root missing" in out
+
+    code, out, _ = run_cli("--json", "workspace", "show", "project")
+    assert code == exit_codes.SUCCESS
+    assert json.loads(out)["workspace"]["root_exists"] is False
+
+    code, out, _ = run_cli("workspace", "show", "project")
+    assert code == exit_codes.SUCCESS
+    assert "root_exists: false" in out
+
+
+def test_workspace_remove_accepts_a_stale_registration(run_cli, workspace_root: Path) -> None:
+    run_cli("workspace", "create", "project", str(workspace_root))
+    run_cli("workspace", "use", "project")
+    shutil.rmtree(workspace_root)
+
+    code, out, _ = run_cli("workspace", "remove", "project")
+    assert code == exit_codes.SUCCESS
+    assert "its files were not touched" in out
+
+    code, out, _ = run_cli("--json", "workspace", "list")
+    payload = json.loads(out)
+    assert payload["workspaces"] == []
+    assert payload["default_workspace"] is None

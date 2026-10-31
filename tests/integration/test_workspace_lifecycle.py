@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import sqlite3
 from pathlib import Path
 
@@ -76,6 +77,31 @@ def test_removal_with_delete_files_is_refused(app, workspace_root: Path) -> None
     app.create_workspace("project", workspace_root)
     with pytest.raises(ValidationError):
         app.remove_workspace("project", delete_files=True)
+
+
+def test_a_missing_root_is_reported_not_pruned(app, workspace_root: Path) -> None:
+    app.create_workspace("project", workspace_root)
+    app.use_workspace("project")
+    shutil.rmtree(workspace_root)
+
+    listed = app.list_workspaces()
+    assert len(listed) == 1
+    assert listed[0].root_exists is False
+    assert app.get_workspace("project").root_exists is False
+    assert app.default_workspace() is not None, "a stale registration is still offered by default"
+
+
+def test_removing_a_stale_workspace_clears_the_default(app, workspace_root: Path) -> None:
+    app.create_workspace("project", workspace_root)
+    app.use_workspace("project")
+    shutil.rmtree(workspace_root)
+
+    removed = app.remove_workspace("project")
+
+    assert removed.name == "project"
+    assert app.list_workspaces() == ()
+    assert app.registry.get_default_name() is None
+    assert not workspace_root.exists()
 
 
 def test_state_directory_is_project_local_and_migrated(app, workspace_root: Path) -> None:

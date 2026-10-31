@@ -3,12 +3,36 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 from ..diffing import unified_diff_text
 from ..errors import HistoryUnavailableError, OperationNotFoundError, StorageError
 from ..models import DiffEntry, OperationDiff, OperationItemRecord, OperationRecord
+from ..paths import reported_path
 from .journal import OperationJournal, _row_to_operation
+
+
+def _reported_record(root: Path, record: OperationRecord) -> OperationRecord:
+    """Render a stored record's paths for a caller, without migrating the row.
+
+    History stores workspace-relative paths; a workspace rooted at ``/`` reports
+    them with their leading separator so the string is the absolute path. Every
+    other root renders byte-identically to what was stored.
+    """
+
+    return replace(
+        record,
+        target_path=(
+            None if record.target_path is None else reported_path(root, record.target_path)
+        ),
+        items=tuple(
+            replace(item, relative_path=reported_path(root, item.relative_path))
+            for item in record.items
+        ),
+        history_skipped=tuple(reported_path(root, path) for path in record.history_skipped),
+    )
 
 
 def get_operation(journal: OperationJournal, operation_id: str) -> OperationRecord:
@@ -17,7 +41,7 @@ def get_operation(journal: OperationJournal, operation_id: str) -> OperationReco
         raise OperationNotFoundError(
             "no operation with that id in this workspace", details={"operation_id": operation_id}
         )
-    return record
+    return _reported_record(journal.root, record)
 
 
 def _matching_operations(journal: OperationJournal, path: str | None) -> list[str]:
@@ -80,7 +104,7 @@ def list_history(
                 "SELECT * FROM operation_items WHERE operation_id = ? ORDER BY id",
                 (row["id"],),
             ).fetchall()
-            records.append(_row_to_operation(row, items))
+            records.append(_reported_record(journal.root, _row_to_operation(row, items)))
     except sqlite3.Error as exc:
         raise StorageError(f"cannot read operation history: {exc}") from exc
     finally:
@@ -116,7 +140,7 @@ def _diff_entry(journal: OperationJournal, item: OperationItemRecord) -> DiffEnt
     after_text = _decode(after)
     if before_text is None or after_text is None:
         return DiffEntry(
-            path=item.relative_path,
+            path=reported_path(journal.root, item.relative_path),
             item_type=item.item_type,
             before_exists=item.before_exists,
             after_exists=item.after_exists,
@@ -130,7 +154,7 @@ def _diff_entry(journal: OperationJournal, item: OperationItemRecord) -> DiffEnt
         tofile=f"b/{item.relative_path}" if item.after_exists else "/dev/null",
     )
     return DiffEntry(
-        path=item.relative_path,
+        path=reported_path(journal.root, item.relative_path),
         item_type=item.item_type,
         before_exists=item.before_exists,
         after_exists=item.after_exists,
@@ -140,7 +164,11 @@ def _diff_entry(journal: OperationJournal, item: OperationItemRecord) -> DiffEnt
 
 
 def diff_operation(journal: OperationJournal, operation_id: str) -> OperationDiff:
-    record = get_operation(journal, operation_id)
+    record = journal.get(operation_id)
+    if record is None:
+        raise OperationNotFoundError(
+            "no operation with that id in this workspace", details={"operation_id": operation_id}
+        )
     return OperationDiff(
         operation_id=record.operation_id,
         items=tuple(

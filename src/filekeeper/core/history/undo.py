@@ -26,6 +26,7 @@ from ..errors import (
     storage_failure,
 )
 from ..models import MutationResult, OperationItemRecord, OperationItemResult, OperationRecord
+from ..paths import reported_path
 from ..safety.atomic import atomic_write_bytes, fsync_directory
 from ..safety.hashing import hash_file
 from .journal import (
@@ -271,7 +272,7 @@ def _result(
 ) -> MutationResult:
     items = tuple(
         OperationItemResult(
-            path=step.item.relative_path,
+            path=reported_path(journal.root, step.item.relative_path),
             change=(
                 "deleted"
                 if not step.item.before_exists
@@ -287,7 +288,7 @@ def _result(
     )
     return MutationResult(
         workspace=workspace_name,
-        path=record.target_path or "",
+        path=(reported_path(journal.root, record.target_path) if record.target_path else ""),
         changed=True,
         before_hash=record.after_hash,
         after_hash=record.before_hash,

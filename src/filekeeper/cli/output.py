@@ -240,6 +240,8 @@ def history_diff(diff: OperationDiff) -> str:
 
 def workspace_summary(workspace: Workspace, *, is_default: bool = False) -> str:
     suffix = "  (default)" if is_default else ""
+    if not workspace.root_exists:
+        suffix += "  (root missing)"
     return f"{workspace.name}\t{workspace.root_path}\t{workspace.id}{suffix}"
 
 
@@ -249,6 +251,7 @@ def workspace_detail(workspace: Workspace, *, is_default: bool = False) -> str:
             f"name: {workspace.name}",
             f"id: {workspace.id}",
             f"root: {workspace.root_path}",
+            f"root_exists: {str(workspace.root_exists).lower()}",
             f"created_at: {workspace.created_at}",
             f"updated_at: {workspace.updated_at}",
             f"default: {is_default}",

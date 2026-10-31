@@ -47,6 +47,21 @@ from .errors import (
 PathKind = Literal["file", "directory", "symlink", "other"]
 
 
+def reported_path(root: Path, relative: str) -> str:
+    """Render a workspace-relative path for a caller.
+
+    A relative path is the normal form and is returned byte-for-byte. The one
+    exception is a workspace whose root is the filesystem root: there the
+    relative form cannot be told apart from a repository-relative path, so the
+    leading separator is restored and the reported string is the absolute path.
+    The empty relative path is rendered as the root itself.
+    """
+
+    if Path(root) == Path("/"):
+        return "/" + relative
+    return relative or "."
+
+
 @dataclass(frozen=True, slots=True)
 class ResolvedPath:
     """A path proven to be inside the workspace.
@@ -55,13 +70,21 @@ class ResolvedPath:
     operations act on. ``link_path`` is the path as located in the workspace,
     which differs only when the final component is a symlink; metadata calls need
     it to stat the link itself instead of its target.
+
+    ``reported`` is the string a caller sees; ``relative`` stays the form
+    operations and the journal use.
     """
 
+    root: Path
     absolute: Path
     relative: str
     exists: bool
     is_symlink: bool
     link_path: Path
+
+    @property
+    def reported(self) -> str:
+        return reported_path(self.root, self.relative)
 
     @property
     def kind(self) -> PathKind:
@@ -202,6 +225,7 @@ def resolve_path(
     reported = link_location if is_link else canonical
     relative = reported.relative_to(root_canonical).as_posix()
     resolved = ResolvedPath(
+        root=root_canonical,
         absolute=canonical,
         relative=relative if relative != "." else "",
         exists=exists and canonical.exists(),

@@ -482,14 +482,19 @@ def _handle_workspace_list(context: _Context) -> int:
         output.workspace_summary(workspace, is_default=workspace.name == default_name)
         for workspace in workspaces
     ]
-    context.emit(
-        {
-            "ok": True,
-            "default_workspace": default_name,
-            "workspaces": output.jsonable(workspaces),
-        },
-        "\n".join(lines) if lines else "no workspaces registered",
-    )
+    payload: dict[str, object] = {
+        "ok": True,
+        "default_workspace": default_name,
+        "workspaces": output.jsonable(workspaces),
+    }
+    warnings = [
+        f"workspace '{workspace.name}' is registered at a root that no longer exists"
+        for workspace in workspaces
+        if not workspace.root_exists
+    ]
+    if warnings:
+        payload["warnings"] = warnings
+    context.emit(payload, "\n".join(lines) if lines else "no workspaces registered")
     return exit_codes.SUCCESS
 
 

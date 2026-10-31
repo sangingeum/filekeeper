@@ -175,7 +175,7 @@ def create_directory(
 
     result = MutationResult(
         workspace=handle.name,
-        path=resolved.relative,
+        path=resolved.reported,
         changed=True,
         before_hash=None,
         after_hash=None,
@@ -183,7 +183,7 @@ def create_directory(
         operation_id=operation_id,
         undo_available=not dry_run and operation_id is not None,
         dry_run=dry_run,
-        items=(OperationItemResult(path=resolved.relative, change="created"),),
+        items=(OperationItemResult(path=resolved.reported, change="created"),),
         affected_count=1,
     )
     if dry_run:
@@ -337,7 +337,7 @@ def move_directory(
 
     result = MutationResult(
         workspace=handle.name,
-        path=destination_resolved.relative,
+        path=destination_resolved.reported,
         changed=True,
         before_hash=None,
         after_hash=None,
@@ -349,8 +349,8 @@ def move_directory(
         undo_available=not dry_run and operation_id is not None and not skipped,
         dry_run=dry_run,
         items=(
-            OperationItemResult(path=source_resolved.relative, change="moved"),
-            OperationItemResult(path=destination_resolved.relative, change="created"),
+            OperationItemResult(path=source_resolved.reported, change="moved"),
+            OperationItemResult(path=destination_resolved.reported, change="created"),
         ),
         affected_count=1,
         history_skipped=tuple(sorted(set(skipped))),
@@ -480,7 +480,7 @@ def delete_directory(
 
     result = MutationResult(
         workspace=handle.name,
-        path=resolved.relative,
+        path=resolved.reported,
         changed=True,
         before_hash=None,
         after_hash=None,
@@ -491,7 +491,7 @@ def delete_directory(
         operation_id=operation_id,
         undo_available=not dry_run and operation_id is not None and not skipped,
         dry_run=dry_run,
-        items=(OperationItemResult(path=resolved.relative, change="deleted"),),
+        items=(OperationItemResult(path=resolved.reported, change="deleted"),),
         affected_count=entries,
         warnings=(
             *warnings,
