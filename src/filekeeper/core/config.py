@@ -11,7 +11,9 @@ Two kinds of state exist, and they live in different places on purpose:
 
 ``config.toml`` in the home directory holds tunable limits. It is read on every
 invocation; writing it is left to the user (``keeper init`` creates it with the
-defaults spelled out).
+defaults spelled out). ``state_location`` is written only as a commented example:
+a generated file must not turn a default into an explicit operator decision,
+because an explicit decision refuses the global fallback.
 """
 
 from __future__ import annotations
@@ -133,7 +135,15 @@ max_history_blob_bytes = 4194304
 # parent directory before reporting success.
 fsync = true
 
-# "project" keeps per-workspace state in <workspace>/.filekeeper/ (default).
-# "global" keeps one shared store under this home directory instead.
-state_location = "project"
+# Per-workspace state lives in <workspace>/.filekeeper/ by default. When the
+# workspace root cannot host that directory (a read-only checkout, or a root at
+# /), Filekeeper falls back to the global store under this home directory and
+# says so in the response.
+#
+# Uncommenting the next line pins the choice instead of leaving it at the
+# built-in default. "project" then fails loudly when the root cannot host the
+# directory instead of being redirected; "global" always uses the shared store.
+# An uncommented key is an operator decision, so keep it commented unless you
+# mean it.
+# state_location = "project"
 """

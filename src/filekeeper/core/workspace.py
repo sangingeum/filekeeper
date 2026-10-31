@@ -69,6 +69,30 @@ def global_workspace_state_dir(workspace_id: str, home: Path) -> Path:
     return Path(home) / "workspaces" / workspace_id
 
 
+def display_state_location(
+    state_dir: Path, *, root: Path | None, home: Path | None
+) -> str:
+    """Render a state directory without naming an absolute host path.
+
+    A public error envelope is read by a caller confined to the workspace, so a
+    resolved host path there tells them nothing they can use and describes the
+    host tree. The workspace-relative form is preferred; a global store outside
+    the workspace is rendered relative to the home directory; anything else falls
+    back to prose. The value stays meaningful, which is what the operator needs
+    in order to fix the deployment.
+    """
+
+    for base in (root, home):
+        if base is None:
+            continue
+        try:
+            relative = Path(state_dir).relative_to(Path(base)).as_posix()
+        except ValueError:
+            continue
+        return relative or "."
+    return "the global Filekeeper state store"
+
+
 def _directory_usable(directory: Path) -> bool:
     """Whether ``directory`` exists and is writable, or can be created."""
 
@@ -157,27 +181,31 @@ def handle_for(workspace: Workspace, config: Config, home: Path) -> WorkspaceHan
     )
 
 
-def ensure_state_directory(state_dir: Path, *, root: Path | None = None) -> Path:
+def ensure_state_directory(
+    state_dir: Path, *, root: Path | None = None, home: Path | None = None
+) -> Path:
     """Create the state directory and its migrated database; return the DB path.
 
     Every filesystem failure here is a :class:`StorageError` naming the state
-    directory the operator chose. It is never an ``INTERNAL_ERROR``, and the
-    message carries only the reason phrase, never a resolved host path.
+    directory the operator chose. It is never an ``INTERNAL_ERROR``, and neither
+    the message nor the details carry a resolved host path: the location is
+    rendered workspace-relative (or home-relative for the global store).
     """
 
+    display = display_state_location(state_dir, root=root, home=home)
     try:
         state_dir.mkdir(parents=True, exist_ok=True)
         state_dir.chmod(stat.S_IRWXU)
     except OSError as exc:
         raise StorageError(
             f"cannot create state directory: {exc.strerror or type(exc).__name__}",
-            details={"state_dir": str(state_dir)},
+            details={"state_dir": display},
         ) from exc
     if root is not None and state_dir.parent == root:
         # Only a project-local directory belongs in the tree's ignore rules.
         ensure_gitignore_entry(root)
     database_path = state_dir / STATE_DATABASE_NAME
-    connection = database.open_workspace_database(database_path)
+    connection = database.open_workspace_database(database_path, display=display)
     connection.close()
     return database_path
 
@@ -228,7 +256,7 @@ class WorkspaceRegistry:
             raise StorageError(
                 f"cannot create the Filekeeper home directory: "
                 f"{exc.strerror or type(exc).__name__}",
-                details={"state_dir": str(self.home)},
+                details={"state_dir": "the Filekeeper home directory"},
             ) from exc
         try:
             self.home.chmod(stat.S_IRWXU)
@@ -399,7 +427,9 @@ class WorkspaceRegistry:
         """
 
         return ensure_state_directory(
-            self.state_dir_for(workspace), root=Path(workspace.root_path)
+            self.state_dir_for(workspace),
+            root=Path(workspace.root_path),
+            home=self.home,
         )
 
 

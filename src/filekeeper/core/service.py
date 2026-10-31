@@ -219,21 +219,24 @@ class FilekeeperService:
         if self.registered and self.handle.workspace_id is not None:
             workspace = self.owner.registry.get(self.handle.name)
             return self.owner.registry.ensure_state_dir(workspace)
-        return ensure_state_directory(self.handle.state_dir, root=self.root)
+        return ensure_state_directory(
+            self.handle.state_dir, root=self.root, home=self.owner.home
+        )
 
     def blob_store(self) -> BlobStore:
         return BlobStore(self.state_database_path().parent / "blobs", fsync=self.config.fsync)
 
     def _journal_for(self, dry_run: bool) -> OperationJournal | None:
-        """The journal a mutation will record into, or a verified ``None``.
+        """The journal a mutation will record into, or ``None`` for a dry run.
 
-        A dry run writes no history, but it still proves that the journal can be
-        opened: a preview must never report success for a call the real
-        operation could not perform.
+        A dry run has nothing to journal, so it touches no state at all: it does
+        not create the state directory, open the database or write a blob. That
+        makes a preview readable even where the real operation would be refused —
+        which is the point of a preview, and why a preview that failed on state
+        creation was not a preview.
         """
 
         if dry_run:
-            self.state_database_path()
             return None
         return self.history
 

@@ -135,15 +135,20 @@ def uuid_token() -> str:
     return uuid.uuid4().hex[:16]
 
 
-def connect(path: Path) -> sqlite3.Connection:
-    """Open a SQLite database with durable, foreign-key-enforcing settings."""
+def connect(path: Path, *, display: str = "the Filekeeper state store") -> sqlite3.Connection:
+    """Open a SQLite database with durable, foreign-key-enforcing settings.
+
+    ``display`` is the caller-facing name of the directory holding the database.
+    A public error envelope never carries the resolved host path; the reason
+    phrase is all the message needs.
+    """
 
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         raise StorageError(
             f"cannot create state directory: {exc.strerror or type(exc).__name__}",
-            details={"state_dir": str(path.parent)},
+            details={"state_dir": display},
         ) from exc
     try:
         os.chmod(path.parent, stat.S_IRWXU)
@@ -152,7 +157,7 @@ def connect(path: Path) -> sqlite3.Connection:
     try:
         connection = sqlite3.connect(path, timeout=10.0)
     except sqlite3.Error as exc:
-        raise StorageError(f"cannot open database: {exc}", details={"path": str(path)}) from exc
+        raise StorageError(f"cannot open database: {exc}", details={"path": display}) from exc
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA journal_mode = WAL")
     # Full synchronous mode: a committed record survives an OS crash, which the
@@ -216,14 +221,18 @@ def migrate_workspace(connection: sqlite3.Connection) -> int:
     return migrate(connection, _WORKSPACE_MIGRATIONS, label="workspace")
 
 
-def open_registry_database(path: Path) -> sqlite3.Connection:
-    connection = connect(path)
+def open_registry_database(
+    path: Path, *, display: str = "the Filekeeper home directory"
+) -> sqlite3.Connection:
+    connection = connect(path, display=display)
     migrate_registry(connection)
     return connection
 
 
-def open_workspace_database(path: Path) -> sqlite3.Connection:
-    connection = connect(path)
+def open_workspace_database(
+    path: Path, *, display: str = "the workspace state directory"
+) -> sqlite3.Connection:
+    connection = connect(path, display=display)
     migrate_workspace(connection)
     try:
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)

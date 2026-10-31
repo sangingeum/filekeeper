@@ -3,6 +3,10 @@
 The workspace root can be ``/``. Scrubbing that location would replace every
 separator in the payload, so a bare separator is never treated as a location and
 a location is only replaced as a whole path token.
+
+Every detail value is scrubbed, not only ``path``. Core renders a state
+directory workspace- or home-relative, so the readable value survives while a
+resolved host path never appears in the envelope.
 """
 
 from __future__ import annotations
@@ -48,7 +52,7 @@ def test_a_genuine_host_prefix_is_still_scrubbed() -> None:
     assert "/srv/project" not in cleaned
 
 
-def test_the_state_directory_stays_visible_in_details() -> None:
+def test_an_absolute_state_directory_is_scrubbed_in_details() -> None:
     from filekeeper.core.errors import StorageError
 
     error = StorageError(
@@ -58,7 +62,23 @@ def test_the_state_directory_stays_visible_in_details() -> None:
 
     payload = error_payload(error, host_paths=("/",))
 
-    assert payload["error"]["details"]["state_dir"] == "/srv/state/ws-transient-abc"
+    assert payload["error"]["details"]["state_dir"] == "<host-path>"
+    assert "/srv/state" not in json.dumps(payload)
+
+
+def test_a_relative_state_directory_stays_readable_in_details() -> None:
+    from filekeeper.core.errors import StorageError
+
+    error = StorageError(
+        "cannot create state directory: Permission denied",
+        details={"state_dir": ".filekeeper", "operation_id": "op-1"},
+    )
+
+    payload = error_payload(error, host_paths=("/", "/srv/project"))
+
+    details = payload["error"]["details"]
+    assert details["state_dir"] == ".filekeeper"
+    assert details["operation_id"] == "op-1"
 
 
 def test_a_wrong_argument_name_is_a_coded_error(target: ServerTarget) -> None:

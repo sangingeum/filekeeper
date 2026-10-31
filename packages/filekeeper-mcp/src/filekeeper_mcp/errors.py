@@ -14,7 +14,10 @@ destroy every slash in the payload.
 
 The envelope is the same one the CLI emits: ``{"ok": false, "error": {...}}``
 with no fields beside ``ok`` and ``error`` at the top level. The caller's path
-travels inside ``error.details.path``, where Core already records it.
+travels inside ``error.details.path``, where Core already records it. Every
+value in ``details`` is scrubbed, not just ``path``: Core renders state
+locations workspace- or home-relative, so scrubbing a relative value leaves it
+readable and a resolved host path never survives anywhere in the envelope.
 """
 
 from __future__ import annotations
@@ -36,10 +39,6 @@ _ABSOLUTE_WINDOWS = re.compile(r"(?<!<)\b[A-Za-z]:\\[^\s\"\',;:()\[\]]+")
 
 # Detail keys that only ever carry a server-side location.
 _LOCATION_KEYS = frozenset({"root", "home", "database", "path_absolute"})
-
-# Locations the operator supplied and may need verbatim to fix the deployment.
-# They are reported as chosen, not scrubbed.
-_UNSCRUBBED_DETAIL_KEYS = frozenset({"state_dir"})
 
 
 def _location_pattern(location: str) -> re.Pattern[str]:
@@ -93,9 +92,6 @@ def error_payload(
     details: dict[str, Any] = {}
     for key, value in error.details.items():
         if key in _LOCATION_KEYS:
-            continue
-        if key in _UNSCRUBBED_DETAIL_KEYS:
-            details[key] = value
             continue
         details[key] = _scrub_value(value, locations)
     error_body: dict[str, Any] = {

@@ -129,6 +129,12 @@ home directory instead. The trade-off: history survives deleting the checkout, b
 per-project attribution and pruning become harder, and undo history no longer
 travels with the tree.
 
+If the workspace root cannot host `.filekeeper/` — a read-only checkout, or a root
+at `/` — Filekeeper falls back to the global store and says so in the response.
+`keeper init` writes the setting only as a commented example, so that fallback
+stays available; uncomment the key to pin the choice, and a project-local choice
+then fails loudly instead of being redirected.
+
 If the workspace is a git repository, Filekeeper adds `.filekeeper/` to
 `.gitignore` when it creates the state directory. Outside a repository it writes
 nothing.
