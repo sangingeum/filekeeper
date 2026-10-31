@@ -195,3 +195,29 @@ def test_history_list_and_undo_use_the_same_operation_key(
     assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == (
         "alpha\nbeta\ngamma\n"
     )
+
+
+def test_history_undo_refuses_a_copy_whose_destination_was_moved_away(
+    run_cli, workspace_root: Path
+) -> None:
+    run_cli("workspace", "create", "project", str(workspace_root))
+    code, _out, _ = run_cli("dir", "create", "src")
+    assert code == exit_codes.SUCCESS
+    code, _out, _ = run_cli("file", "create", "src/a.txt", "--content", "alpha", "--json")
+    assert code == exit_codes.SUCCESS
+    code, out, _ = run_cli("file", "copy", "src/a.txt", "src/b.txt", "--json")
+    assert code == exit_codes.SUCCESS
+    copy_id = json.loads(out)["operation_id"]
+    code, _out, _ = run_cli("file", "move", "src/b.txt", "src/b-renamed.txt", "--json")
+    assert code == exit_codes.SUCCESS
+
+    code, out, _ = run_cli("history", "undo", copy_id, "--json")
+
+    assert code == exit_codes.UNDO_CONFLICT == 12
+    payload = json.loads(out)
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "UNDO_CONFLICT"
+    assert "src/b.txt" in payload["error"]["message"]
+    assert payload["error"]["details"]["conflicting_paths"] == "src/b.txt"
+    assert not (workspace_root / "src" / "b.txt").exists()
+    assert (workspace_root / "src" / "b-renamed.txt").read_text(encoding="utf-8") == "alpha"

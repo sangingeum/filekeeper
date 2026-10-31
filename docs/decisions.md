@@ -195,7 +195,12 @@ match either the recorded pre-state or the recorded post-state. Matching
 post-state means "restore it"; matching pre-state means "already there, leave
 it". Matching neither means someone else changed it, and the whole undo is
 refused before any byte is written. This keeps the safety property while letting
-a partial batch be repaired.
+a partial batch be repaired. A committed operation is a special case: it left
+every path in its post-state, so a path that matches only the pre-state has been
+edited, deleted or renamed away since. That cannot be read as "already there",
+because the change the undo claims to reverse is gone; the undo is refused
+instead of reporting a restore that did not happen. The pre-state match is only
+honoured for an operation that never committed.
 
 ## A directory is only removed when the whole undo owns it
 

@@ -122,6 +122,39 @@ def test_undo_of_create_refuses_a_modified_file(service) -> None:
     assert (service.root / "created.txt").read_text(encoding="utf-8") == "edited\n"
 
 
+def test_undo_of_copy_refuses_when_the_destination_was_moved_away(service) -> None:
+    original = (service.root / "notes.txt").read_bytes()
+    copied = service.copy_file("notes.txt", "copied.txt")
+    service.move_file("copied.txt", "copied-renamed.txt")
+
+    with pytest.raises(UndoConflictError) as raised:
+        service.undo(copied.operation_id)
+
+    assert raised.value.code == "UNDO_CONFLICT"
+    assert "copied.txt" in raised.value.message
+    assert raised.value.details["conflicting_paths"] == "copied.txt"
+    assert not (service.root / "copied.txt").exists()
+    assert (service.root / "copied-renamed.txt").read_bytes() == original
+    assert service.get_operation(copied.operation_id).status == "committed"
+
+
+def test_undo_of_move_refuses_when_the_destination_was_moved_again(service) -> None:
+    original = (service.root / "notes.txt").read_bytes()
+    first = service.move_file("notes.txt", "moved.txt")
+    service.move_file("moved.txt", "moved-again.txt")
+
+    with pytest.raises(UndoConflictError) as raised:
+        service.undo(first.operation_id)
+
+    assert raised.value.code == "UNDO_CONFLICT"
+    assert "moved.txt" in raised.value.message
+    assert raised.value.details["conflicting_paths"] == "moved.txt"
+    assert not (service.root / "notes.txt").exists()
+    assert not (service.root / "moved.txt").exists()
+    assert (service.root / "moved-again.txt").read_bytes() == original
+    assert service.get_operation(first.operation_id).status == "committed"
+
+
 def test_undo_of_directory_create_refuses_a_non_empty_directory(service) -> None:
     result = service.create_directory("fresh")
     (service.root / "fresh" / "keep.txt").write_text("keep\n", encoding="utf-8")

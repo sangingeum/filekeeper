@@ -104,6 +104,13 @@ def _plan(journal: OperationJournal, record: OperationRecord) -> list[_Step]:
             conflicts.append(item.relative_path)
             continue
         if matches_before:
+            # A committed operation left every item in its post-operation state.
+            # Matching only the pre-operation state now means the path was
+            # changed or removed by someone else, not that this undo already
+            # ran. Only a failed operation can legitimately be part-way back.
+            if record.status == COMMITTED and not matches_after:
+                conflicts.append(item.relative_path)
+                continue
             already_before += 1
             continue
 
@@ -140,11 +147,13 @@ def _plan(journal: OperationJournal, record: OperationRecord) -> list[_Step]:
             conflicts.append(step.item.relative_path)
 
     if conflicts:
+        named = ", ".join(sorted(conflicts))
         raise UndoConflictError(
-            "cannot undo: these paths changed after the operation, so nothing was modified",
+            f"cannot undo: these paths changed after the operation ({named}), "
+            "so nothing was modified",
             details={
                 "operation_id": record.operation_id,
-                "conflicting_paths": ", ".join(sorted(conflicts)),
+                "conflicting_paths": named,
             },
         )
     if record.status == FAILED and already_before == len(record.items):
@@ -160,6 +169,14 @@ def _plan(journal: OperationJournal, record: OperationRecord) -> list[_Step]:
         raise UndoConflictError(
             "operation is not committed and cannot be undone",
             details={"operation_id": record.operation_id, "status": record.status},
+        )
+    if not steps:
+        # Nothing matched the operation's result, so there is nothing to put
+        # back. Reporting success here would claim a change that never happened.
+        raise UndoConflictError(
+            "cannot undo: no recorded target still matches the operation's result, "
+            "so nothing was modified",
+            details={"operation_id": record.operation_id},
         )
     return steps
 

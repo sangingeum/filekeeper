@@ -283,10 +283,11 @@ affected path with the state the operation recorded:
 
 - if the path still matches the recorded **after** state, undo restores the
   recorded **before** bytes;
-- if it already matches the **before** state (a partially applied multi-file
-  operation), undo leaves it alone;
-- if it matches neither, someone changed it afterwards: the undo is refused with
-  `UNDO_CONFLICT` (exit code 12) and **nothing is modified**.
+- if it already matches the **before** state of an operation that never committed
+  (a partially applied multi-file operation), undo leaves it alone;
+- if a committed operation's path no longer matches the **after** state — edited,
+  deleted, or renamed away — the undo is refused with `UNDO_CONFLICT` (exit code
+  12) and **nothing is modified**.
 
 Undoing a create removes the file only while it still matches what was created.
 Undoing a delete restores the file only while the destination is still absent.
