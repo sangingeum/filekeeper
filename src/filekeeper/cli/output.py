@@ -14,7 +14,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from ..core.errors import FilekeeperError
+from ..core.errors import CallerSurface, FilekeeperError
 from ..core.models import (
     ContentSearchResult,
     DirectoryListing,
@@ -53,6 +53,9 @@ def print_json(payload: dict[str, Any]) -> None:
 
 
 def print_error(error: FilekeeperError, *, as_json: bool) -> None:
+    """Render an error for this surface: its override hint names this CLI's flag."""
+
+    error = error.for_surface(CallerSurface.CLI)
     if as_json:
         print_json({"ok": False, "error": error.to_dict()})
         return

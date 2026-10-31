@@ -62,7 +62,9 @@ allowed: the tool is often the thing that needs to inspect such a file, and
 refusing reads is not what was asked. Refusal is a name-shape check (file name,
 suffix, or containing key directory), not a content scan, so it is cheap and
 predictable. The override is `allow_sensitive_write=True` in Core and
-`--i-accept-secret-write-risk` on the CLI; both names state what is being accepted.
+`--i-accept-secret-write-risk` on the CLI and `i_accept_secret_write_risk` on the
+MCP tool. Each name states what is being accepted, and each interface's refusal
+message names only its own argument.
 
 ## Sensitive-path refusal precedes parent-directory validation
 

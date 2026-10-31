@@ -15,10 +15,12 @@ from pathlib import Path
 
 from ..errors import (
     AlreadyExistsError,
+    CallerSurface,
     FilekeeperError,
     PathNotFoundError,
     StorageError,
     ValidationError,
+    override_hint,
     storage_failure,
 )
 from ..errors import (
@@ -30,6 +32,24 @@ from ..paths import ensure_parent_directory, resolve_path
 from ..safety.atomic import fsync_directory
 from ..safety.hashing import hash_file
 from ..workspace import WorkspaceHandle
+
+DIRECTORY_PARENTS_HINT = override_hint(
+    core="pass parents=True to create ancestors",
+    cli="pass --parents to create ancestors",
+    mcp="pass parents=true to create ancestors",
+)
+
+DIRECTORY_DELETE_HINT = override_hint(
+    core="pass recursive=True and confirm_recursive=True to delete its contents",
+    cli="pass --recursive --confirm-recursive to delete its contents",
+    mcp="pass recursive=true and confirm_recursive=true to delete its contents",
+)
+
+DIRECTORY_CONFIRM_HINT = override_hint(
+    core="pass confirm_recursive=True to acknowledge the tree deletion",
+    cli="pass --confirm-recursive to acknowledge the tree deletion",
+    mcp="pass confirm_recursive=true to acknowledge the tree deletion",
+)
 
 
 def _mode(path: Path) -> int | None:
@@ -97,8 +117,10 @@ def create_directory(
     target = resolved.absolute
     if not parents and not target.parent.is_dir():
         raise ValidationError(
-            "parent directory does not exist; pass parents=True to create ancestors",
+            "parent directory does not exist; "
+            f"{DIRECTORY_PARENTS_HINT.sentence(CallerSurface.CORE)}",
             details={"path": resolved.relative},
+            override_hint=DIRECTORY_PARENTS_HINT,
         )
 
     created: list[Path] = [target]
@@ -376,15 +398,17 @@ def delete_directory(
     entries = _count_entries(target)
     if entries > 0 and not recursive:
         raise ValidationError(
-            "directory is not empty; pass --recursive --confirm-recursive "
-            "to delete its contents",
+            "directory is not empty; "
+            f"{DIRECTORY_DELETE_HINT.sentence(CallerSurface.CORE)}",
             details={"path": resolved.relative, "entries": entries},
+            override_hint=DIRECTORY_DELETE_HINT,
         )
     if entries > 0 and not confirm_recursive:
         raise ValidationError(
-            "recursive deletion requires explicit confirmation "
-            "(--recursive --confirm-recursive)",
+            "recursive deletion requires explicit confirmation: "
+            f"{DIRECTORY_CONFIRM_HINT.sentence(CallerSurface.CORE)}",
             details={"path": resolved.relative, "entries": entries},
+            override_hint=DIRECTORY_CONFIRM_HINT,
         )
 
     operation_id: str | None = None

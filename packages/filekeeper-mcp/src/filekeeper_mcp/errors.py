@@ -28,7 +28,7 @@ from typing import Any
 
 import mcp.types as types
 
-from filekeeper import ErrorCode, FilekeeperError
+from filekeeper import CallerSurface, ErrorCode, FilekeeperError
 
 from .payloads import tool_result
 
@@ -88,6 +88,7 @@ def error_payload(
     way it reads a CLI JSON error.
     """
 
+    error = error.for_surface(CallerSurface.MCP)
     locations = tuple(host_paths)
     details: dict[str, Any] = {}
     for key, value in error.details.items():

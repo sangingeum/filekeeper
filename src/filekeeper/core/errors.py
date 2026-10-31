@@ -7,6 +7,9 @@ error payloads, and callers may branch on the code without parsing prose.
 
 from __future__ import annotations
 
+import copy
+from collections.abc import Mapping
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
@@ -46,6 +49,38 @@ class ErrorCode(StrEnum):
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 
+class CallerSurface(StrEnum):
+    """The interface a caller reached Core through.
+
+    A refusal that offers an override must name the argument the caller actually
+    has. Core renders the sentence for ``CORE``; each adapter re-renders the same
+    error for its own surface before returning it, so no message ever names
+    another interface's argument.
+    """
+
+    CORE = "core"
+    CLI = "cli"
+    MCP = "mcp"
+
+
+@dataclass(frozen=True, slots=True)
+class OverrideHint:
+    """One "pass X to override" instruction, worded for each caller surface."""
+
+    sentences: Mapping[CallerSurface, str]
+
+    def sentence(self, surface: CallerSurface) -> str:
+        return self.sentences[surface]
+
+
+def override_hint(*, core: str, cli: str, mcp: str) -> OverrideHint:
+    """Build a hint whose sentence names each surface's own argument."""
+
+    return OverrideHint(
+        {CallerSurface.CORE: core, CallerSurface.CLI: cli, CallerSurface.MCP: mcp}
+    )
+
+
 class FilekeeperError(Exception):
     """Base error carrying a stable code, a human message, and optional details."""
 
@@ -59,6 +94,7 @@ class FilekeeperError(Exception):
         code: ErrorCode | None = None,
         retryable: bool | None = None,
         details: dict[str, Any] | None = None,
+        override_hint: OverrideHint | None = None,
     ) -> None:
         super().__init__(message)
         self.message = message
@@ -67,6 +103,27 @@ class FilekeeperError(Exception):
         if retryable is not None:
             self.retryable = retryable
         self.details: dict[str, Any] = details or {}
+        # Not serialised: the hint only lets an adapter re-word the message.
+        self.override_hint = override_hint
+
+    def for_surface(self, surface: CallerSurface) -> FilekeeperError:
+        """Return this error worded for the interface that received it.
+
+        ``code``, ``retryable`` and ``details`` are carried over untouched; only
+        the message's override sentence changes. An error with no hint, or a
+        request for the surface Core already rendered, is returned as is.
+        """
+
+        hint = self.override_hint
+        if hint is None or surface is CallerSurface.CORE:
+            return self
+        core_sentence = hint.sentence(CallerSurface.CORE)
+        if core_sentence not in self.message:
+            return self
+        adapted = copy.copy(self)
+        adapted.message = self.message.replace(core_sentence, hint.sentence(surface))
+        adapted.args = (adapted.message,)
+        return adapted
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -135,8 +192,14 @@ class SensitivePathRefusedError(FilekeeperError):
 
     code = ErrorCode.SENSITIVE_PATH_REFUSED
 
-    def __init__(self, message: str, *, details: dict[str, Any] | None = None) -> None:
-        super().__init__(message, details=details)
+    def __init__(
+        self,
+        message: str,
+        *,
+        details: dict[str, Any] | None = None,
+        override_hint: OverrideHint | None = None,
+    ) -> None:
+        super().__init__(message, details=details, override_hint=override_hint)
 
 
 class AlreadyExistsError(FilekeeperError):

@@ -137,6 +137,21 @@ def test_secret_refusal_exits_ten_and_override_works(run_cli, workspace_root: Pa
     assert (workspace_root / ".env").read_text(encoding="utf-8") == "TOKEN=1\n"
 
 
+def test_secret_refusal_names_the_cli_flag_only(run_cli, workspace_root: Path) -> None:
+    """The CLI's hint names its own flag, never Core's keyword or MCP's argument."""
+
+    run_cli("workspace", "create", "project", str(workspace_root))
+    code, out, _ = run_cli("--json", "file", "create", ".env", "--content", "TOKEN=1\n")
+    payload = json.loads(out)
+
+    assert code == exit_codes.SENSITIVE_PATH_REFUSED
+    message = payload["error"]["message"]
+    assert "--i-accept-secret-write-risk" in message
+    assert "allow_sensitive_write" not in message
+    assert "i_accept_secret_write_risk" not in message
+    assert set(payload["error"]["details"]) == {"path", "reason"}
+
+
 def test_recursive_delete_needs_both_flags(run_cli, workspace_root: Path) -> None:
     run_cli("workspace", "create", "project", str(workspace_root))
 

@@ -683,10 +683,12 @@ class _Plan:
     hunks: tuple[PatchHunkResult, ...]
 
 
-def _syntax(message: str, line: int) -> PatchFailedError:
-    return PatchFailedError(
-        f"invalid patch: {message}", details={"line": line, "reason": "syntax"}
-    )
+def _syntax(message: str, line: int, **counts: int) -> PatchFailedError:
+    """A syntax refusal; ``counts`` carries the hunk's expected/actual line counts."""
+
+    details: dict[str, Any] = {"line": line, "reason": "syntax"}
+    details.update(counts)
+    return PatchFailedError(f"invalid patch: {message}", details=details)
 
 
 def _parse_patch(patch_text: str) -> tuple[_FilePatch, ...]:
@@ -744,13 +746,34 @@ def _parse_patch(patch_text: str) -> tuple[_FilePatch, ...]:
                             body.append(_BodyLine("+", body_line[1:]))
                             remaining_new -= 1
                         else:
+                            found_old = old_count - remaining_old
+                            found_new = new_count - remaining_new
                             raise _syntax(
-                                "hunk is truncated or has an unknown line prefix",
+                                "hunk is truncated or has an unknown line prefix "
+                                f"(header declares {old_count} old and {new_count} new "
+                                f"lines; the body supplies {found_old} old and "
+                                f"{found_new} new)",
                                 index + 1,
+                                expected_old_lines=old_count,
+                                expected_new_lines=new_count,
+                                actual_old_lines=found_old,
+                                actual_new_lines=found_new,
                             )
                         index += 1
                     if remaining_old != 0 or remaining_new != 0:
-                        raise _syntax("hunk line counts do not match its header", index + 1)
+                        found_old = old_count - remaining_old
+                        found_new = new_count - remaining_new
+                        raise _syntax(
+                            "hunk line counts do not match its header "
+                            f"(header declares {old_count} old and {new_count} new "
+                            f"lines; the patch supplies {found_old} old and "
+                            f"{found_new} new)",
+                            index + 1,
+                            expected_old_lines=old_count,
+                            expected_new_lines=new_count,
+                            actual_old_lines=found_old,
+                            actual_new_lines=found_new,
+                        )
                     if index < len(lines) and lines[index].startswith("\\"):
                         if not body:
                             raise _syntax("newline marker has no preceding line", index + 1)

@@ -80,7 +80,9 @@ Conventions that hold for every tool:
 - `file_replace_text` requires an explicit `match` policy, `"first"` or `"all"`,
   and reports the matching stage (`exact` or `normalised`) in its result.
 - `i_accept_secret_write_risk` is the only way past the credential-shaped write
-  refusal. The override records a warning in the result.
+  refusal. The override records a warning in the result. A
+  `SENSITIVE_PATH_REFUSED` error names this argument, not Core's keyword or the
+  CLI's flag.
 - Destructive tools (`file_delete`, `directory_delete`, `file_apply_patch` and
   the no-undo-free content replacements) state their scope in their description
   and never operate outside the selected root. Recursive directory deletion

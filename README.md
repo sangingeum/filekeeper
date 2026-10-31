@@ -223,6 +223,13 @@ later file fails after earlier ones were written, the written files are rolled
 back to their pre-patch bytes and the failure names what was restored. A crash is
 resolved from the pending journal record, never from an all-or-nothing commit.
 
+When a hunk's header and its body disagree — the hunk is cut short or a line
+prefix is not ` `, `+` or `-` — the `PATCH_FAILED` error states the counts the
+header declares and the counts the body actually supplied, in the message and in
+`details.expected_old_lines`, `expected_new_lines`, `actual_old_lines` and
+`actual_new_lines`. The existing `line` and `reason` fields are still there. Patch
+text is never echoed into the error.
+
 ## Commands
 
 ```
@@ -420,6 +427,13 @@ a shell predicate.
 
 Codes are stable; messages are not a contract.
 
+Messages name the interface the caller is using. A refusal that offers an
+override states that interface's own argument: Core's keyword, the CLI's flag, or
+the MCP tool argument. The same request therefore reads correctly whether it came
+from a library, a shell, or an agent over MCP, and an adapter never prints another
+surface's argument. Codes, `retryable` and `details` are identical across all
+three surfaces.
+
 ## Safety rules
 
 - **Confinement.** Relative paths resolve inside the workspace root. Absolute paths
@@ -434,8 +448,10 @@ Codes are stable; messages are not a contract.
   `*.key`, `id_rsa` and its siblings, `*.p12`, `*.pfx`, `authorized_keys`,
   `.netrc`, and anything under `.ssh/`, `.gnupg/` or `.aws/` fail with
   `SENSITIVE_PATH_REFUSED` (exit code 10). Override deliberately with
-  `--i-accept-secret-write-risk` (Core: `allow_sensitive_write=True`). The flag is
-  long because the mistake is expensive.
+  `--i-accept-secret-write-risk` on the CLI, `allow_sensitive_write=True` in Core,
+  or `i_accept_secret_write_risk` on the MCP tool. Each name is long because the
+  mistake is expensive. The error message names only the argument belonging to the
+  interface that received the request.
 - **Version-control-ignored targets warn.** Writing a path that git ignores still
   succeeds, but the result carries a warning that the change will not be committed.
 - **No shell.** Filekeeper never interpolates paths into a shell command.

@@ -147,6 +147,57 @@ def test_patch_dry_run_writes_nothing(service, workspace_root: Path) -> None:
     assert target.read_bytes() == before
 
 
+def test_a_truncated_hunk_reports_expected_and_actual_counts(
+    service, workspace_root: Path
+) -> None:
+    """A short hunk states the header's counts and what the body actually had.
+
+    The caller can locate and repair the patch in one step instead of asking
+    for another diagnostic round trip. The existing ``line`` and ``reason``
+    fields stay, and no patch text is echoed into the message.
+    """
+
+    target = _write(workspace_root, "a.txt", "one\ntwo\nthree\nfour\nfive\n")
+    before = target.read_bytes()
+    patch = "--- a/a.txt\n+++ b/a.txt\n@@ -1,5 +1,5 @@\n-one\n"
+
+    with pytest.raises(PatchFailedError) as caught:
+        service.apply_patch(patch)
+
+    details = caught.value.details
+    assert details["reason"] == "syntax"
+    assert details["line"] == 5
+    assert details["expected_old_lines"] == 5
+    assert details["expected_new_lines"] == 5
+    assert details["actual_old_lines"] == 1
+    assert details["actual_new_lines"] == 0
+    message = caught.value.message
+    assert "5 old" in message and "5 new" in message
+    assert "1 old" in message and "0 new" in message
+    assert "-one" not in message
+    assert target.read_bytes() == before
+
+
+def test_a_hunk_that_ends_early_reports_its_counts(service, workspace_root: Path) -> None:
+    """The end-of-patch truncation path reports counts too, not only the prefix path."""
+
+    target = _write(workspace_root, "a.txt", "one\ntwo\nthree\nfour\nfive\n")
+    before = target.read_bytes()
+    patch = "--- a/a.txt\n+++ b/a.txt\n@@ -1,5 +1,5 @@\n-one\n-two"
+
+    with pytest.raises(PatchFailedError) as caught:
+        service.apply_patch(patch)
+
+    details = caught.value.details
+    assert details["reason"] == "syntax"
+    assert "line counts do not match" in caught.value.message
+    assert details["expected_old_lines"] == 5
+    assert details["expected_new_lines"] == 5
+    assert details["actual_old_lines"] == 2
+    assert details["actual_new_lines"] == 0
+    assert target.read_bytes() == before
+
+
 def test_an_invalid_patch_is_rejected_before_anything_is_touched(
     service, workspace_root: Path
 ) -> None:

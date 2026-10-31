@@ -25,6 +25,7 @@ from typing import Any
 
 from ..errors import (
     AlreadyExistsError,
+    CallerSurface,
     ContentConflictError,
     FilekeeperError,
     LimitExceededError,
@@ -33,6 +34,7 @@ from ..errors import (
     StorageError,
     SymlinkWriteRefusedError,
     ValidationError,
+    override_hint,
     storage_failure,
 )
 from ..history.journal import OperationJournal, PendingItem
@@ -45,9 +47,31 @@ from ..safety.textdata import decode_bytes, encode_text, looks_binary
 from ..safety.vcs import ignore_warning
 from ..workspace import WorkspaceHandle
 
-SECRET_FLAG_HINT = (
-    "pass allow_sensitive_write=True in Core, or the CLI flag "
-    "--i-accept-secret-write-risk, if you really mean to write credential material"
+SENSITIVE_WRITE_HINT = override_hint(
+    core="pass allow_sensitive_write=True in Core",
+    cli="pass the CLI flag --i-accept-secret-write-risk",
+    mcp="pass the MCP argument i_accept_secret_write_risk=true",
+)
+
+# Kept for importers of the earlier name.
+SECRET_FLAG_HINT = SENSITIVE_WRITE_HINT
+
+CREATE_OVERWRITE_HINT = override_hint(
+    core="pass expected_absent=False to overwrite",
+    cli="pass --allow-existing to overwrite",
+    mcp="pass expected_absent=false to overwrite",
+)
+
+COPY_OVERWRITE_HINT = override_hint(
+    core="pass expected_destination_hash to replace it deliberately",
+    cli="pass --expected-destination-hash to replace it deliberately",
+    mcp="pass expected_destination_hash to replace it deliberately",
+)
+
+MOVE_OVERWRITE_HINT = override_hint(
+    core="pass overwrite=True to replace it",
+    cli="pass --overwrite to replace it",
+    mcp="pass overwrite=true to replace it",
 )
 
 
@@ -96,8 +120,10 @@ def _guard_sensitive(
     if reason is not None and not allow_sensitive_write:
         raise SensitivePathRefusedError(
             f"refusing to write {resolved.relative}: it looks like credential or key "
-            f"material ({reason}); {SECRET_FLAG_HINT}",
+            f"material ({reason}); {SENSITIVE_WRITE_HINT.sentence(CallerSurface.CORE)}, "
+            "if you really mean to write credential material",
             details={"path": resolved.relative, "reason": reason},
+            override_hint=SENSITIVE_WRITE_HINT,
         )
     warnings: list[str] = []
     warning = ignore_warning(handle.root, resolved.absolute, resolved.relative)
@@ -263,8 +289,10 @@ def create_file(
         raise NotAFileError("path is a directory", details={"path": resolved.relative})
     if resolved.exists and expected_absent:
         raise AlreadyExistsError(
-            "file already exists; pass expected_absent=False to overwrite",
+            "file already exists; "
+            f"{CREATE_OVERWRITE_HINT.sentence(CallerSurface.CORE)}",
             details={"path": resolved.relative},
+            override_hint=CREATE_OVERWRITE_HINT,
         )
     warnings = _guard_sensitive(handle, resolved, allow_sensitive_write=allow_sensitive_write)
     ensure_parent_directory(resolved)
@@ -420,9 +448,10 @@ def copy_file(
         )
         if expected_destination_hash is None:
             raise AlreadyExistsError(
-                "destination already exists; pass expected_destination_hash to "
-                "replace it deliberately",
+                "destination already exists; "
+                f"{COPY_OVERWRITE_HINT.sentence(CallerSurface.CORE)}",
                 details={"path": destination_resolved.relative},
+                override_hint=COPY_OVERWRITE_HINT,
             )
         wanted = normalize_hash(expected_destination_hash)
         if not hashes_match(wanted, destination_before or ""):
@@ -555,8 +584,10 @@ def move_file(
         )
     if destination_resolved.exists and not overwrite:
         raise AlreadyExistsError(
-            "destination already exists; pass overwrite=True to replace it",
+            "destination already exists; "
+            f"{MOVE_OVERWRITE_HINT.sentence(CallerSurface.CORE)}",
             details={"path": destination_resolved.relative},
+            override_hint=MOVE_OVERWRITE_HINT,
         )
     warnings = _guard_sensitive(
         handle,

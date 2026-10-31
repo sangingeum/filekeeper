@@ -12,24 +12,28 @@ work; see ``CHANGELOG.md`` and ``README.md``.
 from __future__ import annotations
 
 from .core import (
+    CallerSurface,
     Config,
     ErrorCode,
     Filekeeper,
     FilekeeperError,
     FilekeeperService,
     MutationResult,
+    OverrideHint,
     Workspace,
 )
 
 __version__ = "0.1.5"
 
 __all__ = [
+    "CallerSurface",
     "Config",
     "ErrorCode",
     "Filekeeper",
     "FilekeeperError",
     "FilekeeperService",
     "MutationResult",
+    "OverrideHint",
     "Workspace",
     "__version__",
 ]

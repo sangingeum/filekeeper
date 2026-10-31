@@ -26,7 +26,12 @@ from .config import (
     load_config,
     resolve_home,
 )
-from .errors import NoWorkspaceSelectedError, ValidationError
+from .errors import (
+    CallerSurface,
+    NoWorkspaceSelectedError,
+    ValidationError,
+    override_hint,
+)
 from .history.blobs import BlobStore
 from .history.journal import OperationJournal
 from .history.repository import diff_operation as read_diff
@@ -57,6 +62,12 @@ from .workspace import (
 
 TRANSIENT_ID_PREFIX = "ws-transient-"
 TRANSIENT_ID_LENGTH = 16
+
+WORKSPACE_SELECTION_HINT = override_hint(
+    core="select a workspace explicitly or register a default",
+    cli="pass --workspace or --root, or register a default with 'keeper workspace use'",
+    mcp="start the server with --root PATH or register a default workspace",
+)
 
 
 def transient_workspace_id(root: str | Path) -> str:
@@ -173,10 +184,11 @@ class Filekeeper:
                 return FilekeeperService(handle_for(workspaces[0], self.config, self.home), self)
             available = ", ".join(workspace.name for workspace in workspaces)
             raise NoWorkspaceSelectedError(
-                "no workspace selected: pass --workspace or --root, or register a "
-                "default with 'keeper workspace use'"
+                "no workspace selected: "
+                f"{WORKSPACE_SELECTION_HINT.sentence(CallerSurface.CORE)}"
                 + (f"; known workspaces: {available}" if available else ""),
                 details={"known_workspaces": available},
+                override_hint=WORKSPACE_SELECTION_HINT,
             )
         return FilekeeperService(handle_for(default, self.config, self.home), self)
 

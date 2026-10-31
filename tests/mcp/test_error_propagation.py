@@ -116,6 +116,31 @@ def test_a_credential_shaped_target_is_refused_and_an_override_warns(
     assert (target.root / ".env").read_text(encoding="utf-8") == "TOKEN=1\n"
 
 
+def test_a_credential_refusal_names_the_mcp_argument_only(target: ServerTarget) -> None:
+    """The hint names the argument this surface actually accepts.
+
+    An agent calling over MCP has ``i_accept_secret_write_risk``, not Core's
+    keyword and not the CLI's flag. The refusal must say so, while its code,
+    retryable flag and details stay exactly as Core produced them.
+    """
+
+    result = exercise(
+        target, [("file_write", {"path": ".env", "content": "TOKEN=1\n"})]
+    )
+
+    refused = result.by_name("file_write")
+    _assert_clean(refused, target)
+    message = refused.error["message"]
+    assert refused.code == "SENSITIVE_PATH_REFUSED"
+    assert refused.error["retryable"] is False
+    assert "i_accept_secret_write_risk" in message
+    assert "allow_sensitive_write" not in message
+    assert "--i-accept-secret-write-risk" not in message
+    assert "in Core" not in message
+    assert set(refused.error["details"]) == {"path", "reason"}
+    assert refused.text and json.loads(refused.text) == refused.structured
+
+
 def test_boundary_escapes_keep_their_distinct_codes(target: ServerTarget) -> None:
     outside = target.root.parent / "escape.txt"
     result = exercise(

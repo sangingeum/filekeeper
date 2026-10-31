@@ -5,7 +5,7 @@ the CLI, of the MCP server, or of any filesystem protocol.
 """
 
 from .config import Config
-from .errors import ErrorCode, FilekeeperError
+from .errors import CallerSurface, ErrorCode, FilekeeperError, OverrideHint
 from .history.blobs import BlobStore
 from .models import (
     ContentMatch,
@@ -27,6 +27,7 @@ from .workspace import WorkspaceHandle, WorkspaceRegistry
 
 __all__ = [
     "BlobStore",
+    "CallerSurface",
     "Config",
     "ContentMatch",
     "ContentSearchResult",
@@ -41,6 +42,7 @@ __all__ = [
     "FilekeeperService",
     "MutationResult",
     "OperationItemResult",
+    "OverrideHint",
     "PathInfo",
     "PathSearchResult",
     "ReadManyEntry",

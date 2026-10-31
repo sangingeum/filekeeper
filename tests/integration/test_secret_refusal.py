@@ -47,11 +47,17 @@ def test_override_flag_name_states_the_risk(service) -> None:
 
 
 def test_the_refusal_message_names_the_override(service) -> None:
+    """Core's own message names Core's keyword and no adapter's argument."""
+
     with pytest.raises(SensitivePathRefusedError) as caught:
         service.create_file("id_rsa", "key\n")
 
-    assert "--i-accept-secret-write-risk" in caught.value.message
+    message = caught.value.message
+    assert "allow_sensitive_write=True" in message
+    assert "--i-accept-secret-write-risk" not in message
+    assert "i_accept_secret_write_risk" not in message
     assert caught.value.code == "SENSITIVE_PATH_REFUSED"
+    assert set(caught.value.details) == {"path", "reason"}
 
 
 def test_reads_of_credential_files_are_still_allowed(service) -> None:
