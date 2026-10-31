@@ -1,5 +1,5 @@
 # Filekeeper
-
+[![M8ven Score](https://m8ven.ai/badge/mcp/sangingeum-filekeeper-1numn1)](https://m8ven.ai/mcp/sangingeum-filekeeper-1numn1?s=readme)   
 Safe, predictable filesystem operations for humans, shell scripts and AI agents.
 One Core library, a `keeper` command line, and an MCP server that all behave
 identically because they call the same code.
