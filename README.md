@@ -139,6 +139,11 @@ If the workspace is a git repository, Filekeeper adds `.filekeeper/` to
 `.gitignore` when it creates the state directory. Outside a repository it writes
 nothing.
 
+**Input paths.** A relative input path resolves against the served workspace
+root. With a root of `/`, `docs/notes.md` resolves from `/`, not from a
+repository's `docs/`; pass the absolute path or serve the repository root as
+the workspace.
+
 **Reported paths when the root is `/`.** Result paths are normally
 workspace-relative, so they are the same whichever tree holds them. With a root
 of `/` that form is indistinguishable from a repository-relative path, so every
