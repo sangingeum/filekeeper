@@ -264,7 +264,12 @@ def test_read_only_directory_write_is_a_storage_error(run_cli, workspace_root: P
     assert code == exit_codes.STORAGE_ERROR
     assert "STORAGE_ERROR" in err
     assert "Permission denied" in err
-    assert re.search(r"(?<![\w.-])/[^\s'\"]+", err) is None, err
+    # The message line never embeds a host path. The details deliberately do:
+    # naming the resolved target and the workspace root is what lets a caller see
+    # where the write went instead of guessing.
+    assert re.search(r"(?<![\w.-])/[^\s'\"]+", err.splitlines()[0]) is None, err
+    assert f"resolved_path: {workspace_root.resolve() / 'locked' / 'blocked.txt'}" in err
+    assert f"workspace_root: {workspace_root.resolve()}" in err
     assert ".keeper-tmp-" not in err
     assert not (read_only / "blocked.txt").exists()
 

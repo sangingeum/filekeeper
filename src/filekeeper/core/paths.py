@@ -17,8 +17,12 @@ Every operation goes through :func:`resolve_path`. It is the single place where
 5. Device files, sockets and FIFOs are refused for normal file operations, as are
    paths inside Filekeeper's own state directory.
 
-Errors name the caller's path, never the resolved host path, so adapter output
-stays free of absolute paths.
+Error messages name the caller's path, never the resolved host path, so adapter
+output stays free of absolute paths in prose. The details payload of every
+resolution refusal additionally carries ``resolved_path`` and
+``workspace_root``, because a workspace rooted at the filesystem root resolves a
+relative path against ``/`` — a caller must be able to see that ``runs/x``
+became ``/runs/x`` without re-deriving it.
 """
 
 from __future__ import annotations
@@ -39,6 +43,7 @@ from .errors import (
     SymlinkEscapeRefusedError,
     SymlinkWriteRefusedError,
     ValidationError,
+    location_details,
 )
 from .errors import (
     NotADirectoryError as FilekeeperNotADirectoryError,
@@ -97,13 +102,13 @@ class ResolvedPath:
         return "other"
 
 
-def _reject_traversal(raw: str) -> None:
+def _reject_traversal(raw: str, root: Path) -> None:
     normalised = raw.replace("\\", "/")
     for segment in normalised.split("/"):
         if segment == "..":
             raise PathOutsideWorkspaceError(
                 "path traversal with '..' is not allowed; use a workspace-relative path",
-                details={"path": raw},
+                details={"path": raw, "workspace_root": str(root)},
             )
 
 
@@ -135,7 +140,7 @@ def _escapes_through_symlink(joined: Path, root_canonical: Path) -> bool:
     return False
 
 
-def _reject_special_file(path: Path, *, display: str) -> None:
+def _reject_special_file(path: Path, *, display: str, root: Path) -> None:
     try:
         info = os.lstat(path)
     except FileNotFoundError:
@@ -146,7 +151,7 @@ def _reject_special_file(path: Path, *, display: str) -> None:
     raise SpecialFileRefusedError(
         "only regular files and directories are supported; device files, sockets "
         "and FIFOs are refused",
-        details={"path": display},
+        details={"path": display, **location_details(path, root)},
     )
 
 
@@ -178,7 +183,7 @@ def resolve_path(
     if candidate.is_absolute():
         joined = candidate
     else:
-        _reject_traversal(raw)
+        _reject_traversal(raw, root_canonical)
         joined = root_canonical / candidate
 
     # realpath resolves symlinks in the existing prefix and is well-defined for
@@ -189,16 +194,16 @@ def resolve_path(
         if _escapes_through_symlink(joined, root_canonical):
             raise SymlinkEscapeRefusedError(
                 "symlink target resolves outside the workspace",
-                details={"path": raw},
+                details={"path": raw, **location_details(canonical, root_canonical)},
             )
         if candidate.is_absolute():
             raise AbsolutePathOutsideWorkspaceError(
                 "absolute path resolves outside the workspace",
-                details={"path": raw},
+                details={"path": raw, **location_details(canonical, root_canonical)},
             )
         raise PathOutsideWorkspaceError(
             "path resolves outside the workspace",
-            details={"path": raw},
+            details={"path": raw, **location_details(canonical, root_canonical)},
         )
 
     if state_dir is not None:
@@ -206,7 +211,7 @@ def resolve_path(
         if canonical == state_canonical or state_canonical in canonical.parents:
             raise StatePathError(
                 "path points inside Filekeeper's own state directory",
-                details={"path": raw},
+                details={"path": raw, **location_details(canonical, root_canonical)},
             )
 
     is_link = joined.is_symlink()
@@ -216,11 +221,11 @@ def resolve_path(
     if is_link and for_write:
         raise SymlinkWriteRefusedError(
             "writes to symlinks are refused; write to the link target explicitly",
-            details={"path": raw},
+            details={"path": raw, **location_details(link_location, root_canonical)},
         )
 
     if exists:
-        _reject_special_file(joined, display=raw)
+        _reject_special_file(joined, display=raw, root=root_canonical)
 
     reported = link_location if is_link else canonical
     relative = reported.relative_to(root_canonical).as_posix()
@@ -233,28 +238,40 @@ def resolve_path(
         link_path=link_location,
     )
 
+    located = location_details(resolved.absolute, root_canonical)
+
     if must_exist and not resolved.exists:
-        raise PathNotFoundError("path does not exist", details={"path": raw})
+        raise PathNotFoundError("path does not exist", details={"path": raw, **located})
 
     if expect is not None and resolved.exists:
         kind = resolved.kind
         if expect == "file" and kind not in {"file", "symlink"}:
-            raise NotAFileError("path is not a regular file", details={"path": raw})
+            raise NotAFileError("path is not a regular file", details={"path": raw, **located})
         if expect == "file" and kind == "symlink":
             # A symlink that resolves to a file is acceptable for reads.
             if not resolved.absolute.is_file():
-                raise NotAFileError("path is not a regular file", details={"path": raw})
+                raise NotAFileError("path is not a regular file", details={"path": raw, **located})
         if expect == "directory" and not resolved.absolute.is_dir():
-            raise FilekeeperNotADirectoryError("path is not a directory", details={"path": raw})
+            raise FilekeeperNotADirectoryError(
+                "path is not a directory", details={"path": raw, **located}
+            )
 
     return resolved
 
 
 def ensure_parent_directory(resolved: ResolvedPath) -> None:
-    """Raise a validation error when the destination's parent is missing."""
+    """Raise a validation error when the destination's parent is missing.
+
+    The details name the resolved target and the workspace root as well as the
+    caller's path, so a caller can see that ``runs/x`` resolved to ``/runs/x``
+    under a workspace rooted at ``/`` without re-deriving it.
+    """
 
     if not resolved.absolute.parent.is_dir():
         raise ValidationError(
             "parent directory does not exist; create it first",
-            details={"path": resolved.relative or "."},
+            details={
+                "path": resolved.relative or ".",
+                **location_details(resolved.absolute, resolved.root),
+            },
         )

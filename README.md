@@ -141,8 +141,11 @@ nothing.
 
 **Input paths.** A relative input path resolves against the served workspace
 root. With a root of `/`, `docs/notes.md` resolves from `/`, not from a
-repository's `docs/`; pass the absolute path or serve the repository root as
-the workspace.
+repository's `docs/`: the resolution is filesystem-root-relative. Pass the
+absolute path, or a path relative to `/`, and serve the repository root as the
+workspace when the relative form is what you mean. A refusal that involves path
+resolution names the `resolved_path` and the `workspace_root` in its `details`,
+so the target is never left to inference.
 
 **Reported paths when the root is `/`.** Result paths are normally
 workspace-relative, so they are the same whichever tree holds them. With a root
@@ -152,7 +155,8 @@ results, `file_info`, `file_read_many` entries, search results, directory
 listings, copy/move result paths, and history target and item paths. Every other
 root is unchanged, byte for byte. History rows are stored relative and rendered
 when read, so existing records display correctly without a migration. Error
-envelopes do not change.
+envelopes keep their shape; a refusal that involves path resolution now also
+names `resolved_path` and `workspace_root` in `details`.
 
 ## Durability guarantees, in plain words
 
@@ -228,9 +232,14 @@ preserved, and the same hash/content guards and dry-run apply.
 `keeper file apply-patch [PATCH]` reads a patch file, or patch text from standard
 input. The whole patch is parsed and every hunk is checked against its file
 before anything is written. A failed or ambiguous hunk rejects the patch; no
-partial patch is applied silently. `--dry-run` validates and reports every file
-and hunk without touching the tree. The result carries per-file and per-hunk
-status, and `--json` carries the same data.
+partial patch is applied silently. A hunk applies at its declared line or not at
+all: one whose preimage matches only somewhere else is refused with
+`reason: preimage_elsewhere`, carrying the declared start and the lines where
+the context does occur. `--expected-hash` ties the patch to the file state it was
+generated from and is checked against the patch's first file section before any
+write; a stale hash is `CONTENT_CONFLICT` and the tree is untouched. `--dry-run`
+validates and reports every file and hunk without touching the tree. The result
+carries per-file and per-hunk status, and `--json` carries the same data.
 
 A multi-file patch is recorded as **one logical operation**, and undo restores
 every file. Application itself is **recoverable, not atomic across files**: if a
@@ -268,7 +277,7 @@ keeper file replace-text PATH --old TEXT --new TEXT (--first | --all) [guards] [
 keeper file replace-lines PATH --start N --end M --replacement TEXT [guards] [--dry-run]
 keeper file insert-lines PATH --position before|after|end [--line N] --content TEXT [guards] [--dry-run]
 keeper file delete-lines PATH --start N --end M [guards] [--dry-run]
-keeper file apply-patch [PATCH] [--dry-run]
+keeper file apply-patch [PATCH] [--expected-hash HASH] [--dry-run]
 keeper dir create PATH [--parents] [--dry-run]
 keeper dir move SOURCE DESTINATION [--dry-run]
 keeper dir delete PATH [--recursive --confirm-recursive] [--dry-run]

@@ -20,6 +20,7 @@ from ..errors import (
     PathNotFoundError,
     StorageError,
     ValidationError,
+    location_details,
     override_hint,
     storage_failure,
 )
@@ -117,7 +118,10 @@ def create_directory(
         raise ValidationError(
             "parent directory does not exist; "
             f"{DIRECTORY_PARENTS_HINT.sentence(CallerSurface.CORE)}",
-            details={"path": resolved.relative},
+            details={
+                "path": resolved.relative or ".",
+                **location_details(resolved.absolute, resolved.root),
+            },
             override_hint=DIRECTORY_PARENTS_HINT,
         )
 
@@ -164,7 +168,9 @@ def create_directory(
         except OSError as exc:
             if journal is not None and operation_id is not None:
                 journal.abort(operation_id)
-            raise storage_failure("create directory", resolved.relative, exc) from exc
+            raise storage_failure(
+                "create directory", resolved.relative, exc, location=resolved
+            ) from exc
         fsync_directory(target.parent)
         if parents:
             fsync_directory(target)
@@ -469,7 +475,9 @@ def delete_directory(
         except OSError as exc:
             # Leave the operation pending: reconciliation inspects the actual
             # state and reports the partial application honestly.
-            raise storage_failure("delete directory", resolved.relative, exc) from exc
+            raise storage_failure(
+                "delete directory", resolved.relative, exc, location=resolved
+            ) from exc
         fsync_directory(target.parent)
         if journal is not None and operation_id is not None:
             journal.commit(operation_id)

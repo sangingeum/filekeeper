@@ -41,6 +41,7 @@ from ..errors import (
     PartialRecoveryError,
     PatchFailedError,
     ValidationError,
+    location_details,
     storage_failure,
 )
 from ..history.journal import OperationJournal, PendingItem
@@ -110,7 +111,7 @@ def _load(
     try:
         raw = resolved.absolute.read_bytes()
     except OSError as exc:
-        raise storage_failure("read", resolved.relative, exc) from exc
+        raise storage_failure("read", resolved.relative, exc, location=resolved) from exc
     text, profile = decode_bytes(raw, path=resolved.relative)
     mode = _target_mode(resolved)
     return _Loaded(
@@ -844,7 +845,18 @@ def _apply_hunks(
             if expected in matches:
                 position = expected
             elif len(matches) == 1:
-                position = matches[0]
+                raise PatchFailedError(
+                    f"hunk {number} does not match {relative} at its stated line; its "
+                    f"preimage appears only at line {matches[0] + 1}. A hunk is never "
+                    "relocated: apply the hunk at its declared line or regenerate it",
+                    details={
+                        "path": relative,
+                        "hunk": number,
+                        "reason": "preimage_elsewhere",
+                        "declared_start": hunk.old_start,
+                        "positions": [item + 1 for item in matches],
+                    },
+                )
             else:
                 raise PatchFailedError(
                     f"hunk {number} is ambiguous in {relative}: its preimage appears "
@@ -926,7 +938,7 @@ def _plan_file(
         try:
             before_bytes = resolved.absolute.read_bytes()
         except OSError as exc:
-            raise storage_failure("read", resolved.relative, exc) from exc
+            raise storage_failure("read", resolved.relative, exc, location=resolved) from exc
         before_text, profile = decode_bytes(before_bytes, path=resolved.relative)
         before_hash = hash_bytes(before_bytes)
         before_mode = _target_mode(resolved)
@@ -1040,6 +1052,7 @@ def apply_patch(
     handle: WorkspaceHandle,
     patch_text: str,
     *,
+    expected_hash: str | None = None,
     dry_run: bool = False,
     allow_sensitive_write: bool = False,
     journal: OperationJournal | None = None,
@@ -1053,6 +1066,15 @@ def apply_patch(
     bytes and the failure says what was rolled back. A multi-file application
     is **recoverable through history, never atomic across files** — undo
     restores every file as one logical operation.
+
+    A hunk applies at its declared line or not at all: a hunk whose preimage
+    matches only elsewhere is refused with ``preimage_elsewhere``, because a
+    relocated hunk turns a stale plan into an edit at the wrong place.
+
+    ``expected_hash`` ties the patch to the file state it was generated from. It
+    is checked against the patch's first file section before anything is
+    written; a stale or absent file refuses with ``CONTENT_CONFLICT`` and the
+    tree untouched.
     """
 
     if not patch_text.strip():
@@ -1072,6 +1094,24 @@ def apply_patch(
         seen.add(plan.relative)
         plans.append(plan)
         warnings.extend(plan_warnings)
+
+    if expected_hash is not None:
+        wanted = normalize_hash(expected_hash)
+        guarded = plans[0]
+        if guarded.before_hash is None:
+            raise ContentConflictError(
+                f"{guarded.relative} does not exist, so it cannot match the expected hash",
+                details={"path": guarded.relative, "expected_hash": wanted},
+            )
+        if not hashes_match(wanted, guarded.before_hash):
+            raise ContentConflictError(
+                "file content changed since the patch was generated; refusing to apply",
+                details={
+                    "path": guarded.relative,
+                    "expected_hash": wanted,
+                    "actual_hash": guarded.before_hash,
+                },
+            )
 
     if dry_run:
         plans = [
@@ -1178,6 +1218,7 @@ def apply_patch(
                     mode=plan.after_mode,
                     fsync=handle.config.fsync,
                     display_path=plan.relative,
+                    details=location_details(plan.absolute, handle.root),
                 )
             else:
                 plan.absolute.unlink()

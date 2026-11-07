@@ -71,14 +71,18 @@ Conventions that hold for every tool:
 
 - Paths are workspace-relative. Absolute paths are accepted only when they
   resolve inside the selected workspace. With `--root /`, relative paths resolve
-  from `/`; pass absolute paths or serve the repository root as the workspace.
+  from the filesystem root, so `runs/x` means `/runs/x`: pass an absolute path,
+  or a path relative to `/`, when you mean a project tree. `workspace_info`
+  reports `root_writable`, and a resolution refusal names `resolved_path` and
+  `workspace_root` in `details`.
 - Line numbers are **1-based and inclusive**. Out-of-range references are
   refused, never clamped. End-of-file insertion is `position: "end"`.
 - Every mutating tool returns the Core `operation_id` and `undo_available`.
   `operation_id` is `null` for a dry run.
 - `expected_hash` (whole file, from `file_info` or `file_read`) and
   `expected_content` (the exact text of the edited region) are the guards. Pass
-  at least one on content you did not just read.
+  at least one on content you did not just read. On `file_apply_patch` it guards
+  the patch's first file section and is checked before any write.
 - `dry_run` validates every guard and writes nothing. It is available on every
   mutating tool.
 - `file_replace_text` requires an explicit `match` policy, `"first"` or `"all"`,

@@ -4,6 +4,34 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- `file_apply_patch` accepts `expected_hash` (CLI `--expected-hash`, MCP
+  `expected_hash`), checked against the patch's first file section before any
+  write. A stale hash is a `CONTENT_CONFLICT` refusal and the tree is untouched.
+- `workspace_info` reports `root_writable` for the selected workspace, so a
+  caller can tell a misconfigured root from a real permission failure before
+  attempting a write.
+- A refusal that involves path resolution names `resolved_path` and
+  `workspace_root` in `details` — at minimum a write whose parent is missing, a
+  permission failure on a mutation, and an absolute path outside the workspace.
+  With a root of `/` a caller can see that `runs/x` resolved to `/runs/x`
+  without deriving it.
+
+### Changed
+
+- `apply-patch` no longer relocates a hunk. A hunk whose preimage does not match
+  at its declared line is refused with `reason: preimage_elsewhere`, naming the
+  declared start and the lines where the context does occur. A hunk that
+  matches only elsewhere used to be applied there and reported as success.
+
+### Fixed
+
+- `apply-patch` exits 7 with `PATCH_FAILED` and the position it would have used,
+  instead of silently moving the edit and exiting 0.
+
 ## 0.1.8 — 2026-10-31
 
 ### Added

@@ -274,11 +274,13 @@ class FilekeeperTools:
     def workspace_info(self, workspace: str | None = None) -> types.CallToolResult:
         """Describe the selected workspace, or one registered workspace by name.
 
-        Read-only. Reports the workspace name, identifier, registered root and
-        whether the selection is a transient --root rather than a registration.
-        It also reports the server's own package ``version``, so a caller can
-        record which build it measured without running the binary.
-        It does not create, select or modify a workspace.
+        Read-only. Reports the workspace name, identifier, registered root,
+        whether the selection is a transient --root rather than a registration,
+        and — for the selected workspace — whether its root is writable right
+        now, so a caller can tell a misconfiguration from a permission failure
+        before attempting a write. It also reports the server's own package
+        ``version``, so a caller can record which build it measured without
+        running the binary. It does not create, select or modify a workspace.
         """
 
         def build(_ignored: Any) -> dict[str, Any]:
@@ -310,6 +312,7 @@ class FilekeeperTools:
                     "id": handle.workspace_id,
                     "root_path": str(service.root),
                     "root_exists": service.root.is_dir(),
+                    "root_writable": service.root_writable,
                 },
                 "registered": service.registered,
             }
@@ -812,6 +815,7 @@ class FilekeeperTools:
     def file_apply_patch(
         self,
         patch: str,
+        expected_hash: str | None = None,
         i_accept_secret_write_risk: bool = False,
         dry_run: bool = False,
     ) -> types.CallToolResult:
@@ -819,17 +823,23 @@ class FilekeeperTools:
 
         The whole patch is parsed and every hunk is checked against its file
         before a byte is written; a failed or ambiguous hunk rejects the patch
-        with PATCH_FAILED and leaves the pre-patch state intact. A patch is
-        limited to 1048576 bytes here. A multi-file patch is recorded as one
-        logical operation and is undoable, but its application is recoverable,
-        not atomic across files. dry_run validates and reports every file and
-        hunk without touching the tree. Renaming patches are refused.
+        with PATCH_FAILED and leaves the pre-patch state intact. A hunk applies
+        at its declared line or not at all: one whose preimage matches only
+        elsewhere is refused with preimage_elsewhere and the positions where it
+        does match. A patch is limited to 1048576 bytes here. A multi-file patch
+        is recorded as one logical operation and is undoable, but its application
+        is recoverable, not atomic across files. expected_hash guards the patch's
+        first file section against a file that changed since the patch was
+        generated; a mismatch is CONTENT_CONFLICT and nothing is written.
+        dry_run validates and reports every file and hunk without touching the
+        tree. Renaming patches are refused.
         """
 
         def call(service: FilekeeperService) -> Any:
             _check_size("patch", patch, MAX_PATCH_BYTES)
             return service.apply_patch(
                 patch,
+                expected_hash=expected_hash,
                 allow_sensitive_write=i_accept_secret_write_risk,
                 dry_run=dry_run,
                 **self._audit(),

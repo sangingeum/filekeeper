@@ -17,6 +17,7 @@ import os
 import stat
 import tempfile
 from pathlib import Path
+from typing import Any
 
 from ..errors import StorageError
 from .hashing import hash_bytes, hash_file
@@ -55,27 +56,32 @@ def atomic_write_bytes(
     mode: int | None = None,
     fsync: bool = True,
     display_path: str | None = None,
+    details: dict[str, Any] | None = None,
 ) -> str:
     """Replace ``destination`` with ``data`` atomically; return the new content hash.
 
     ``mode`` sets the resulting permission bits. When omitted, an existing
     destination keeps its mode and a new file gets the umask-derived default.
     ``display_path`` is the caller-facing path used in error details; the
-    resolved host path and the temporary name are never reported. The final
-    content is read back and hashed; a mismatch is a storage error.
+    resolved host path and the temporary name are never reported. ``details`` is
+    merged into every refusal so a caller can add its own diagnosis fields, such
+    as the resolved target and the workspace root. The final content is read back
+    and hashed; a mismatch is a storage error.
     """
 
-    details = {"path": display_path} if display_path is not None else {}
+    failure_details: dict[str, Any] = {"path": display_path} if display_path is not None else {}
+    if details:
+        failure_details.update(details)
 
     if destination.is_symlink():
         raise StorageError(
             "refusing to replace a symlink atomically; the link itself would be "
             "replaced, not its target",
-            details=details,
+            details=failure_details,
         )
     parent = destination.parent
     if not parent.is_dir():
-        raise StorageError("destination directory does not exist", details=details)
+        raise StorageError("destination directory does not exist", details=failure_details)
 
     existing_mode: int | None = None
     try:
@@ -103,7 +109,7 @@ def atomic_write_bytes(
         # standard reason phrase is safe to show a caller.
         raise StorageError(
             f"atomic write failed: {exc.strerror or type(exc).__name__}",
-            details=details,
+            details=failure_details,
         ) from exc
     finally:
         if temporary_path is not None:
@@ -118,7 +124,7 @@ def atomic_write_bytes(
     if expected != actual:
         raise StorageError(
             "content verification failed after atomic write",
-            details={**details, "expected_hash": expected, "actual_hash": actual},
+            details={**failure_details, "expected_hash": expected, "actual_hash": actual},
         )
     return actual
 

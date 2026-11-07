@@ -305,3 +305,30 @@ def test_history_list_and_undo_share_one_operation_key(target: ServerTarget) -> 
     assert undone["ok"] is True
     assert undone["operation_id"] != operation_id
     assert (target.root / "notes.txt").read_text(encoding="utf-8") == ("alpha\nbeta\ngamma\n")
+
+
+def test_workspace_info_reports_whether_the_root_is_writable(target: ServerTarget) -> None:
+    """A caller can tell a misconfigured root from a real permission failure."""
+
+    result = exercise(target, [("workspace_info", {})])
+    workspace = result.by_name("workspace_info").structured["workspace"]
+
+    assert workspace["root_exists"] is True
+    assert workspace["root_writable"] is True
+
+
+def test_workspace_info_says_when_the_root_cannot_be_written(tmp_path: Path) -> None:
+    import os
+
+    root = tmp_path / "locked"
+    root.mkdir()
+    os.chmod(root, 0o555)
+    try:
+        result = exercise(ServerTarget(root=root, home=tmp_path / "home"), [("workspace_info", {})])
+    finally:
+        os.chmod(root, 0o755)
+    workspace = result.by_name("workspace_info").structured["workspace"]
+
+    assert workspace["root_path"] == str(root)
+    assert workspace["root_exists"] is True
+    assert workspace["root_writable"] is False

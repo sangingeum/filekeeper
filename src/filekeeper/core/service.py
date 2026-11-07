@@ -15,6 +15,7 @@ values inside results, never their fields.
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 
 from . import database, operations
@@ -215,6 +216,17 @@ class FilekeeperService:
     @property
     def root(self) -> Path:
         return self.handle.root
+
+    @property
+    def root_writable(self) -> bool:
+        """Whether this process can write into the workspace root right now.
+
+        A point-in-time answer, not a guarantee: it lets a caller tell a
+        misconfigured root from a later permission failure before attempting a
+        write. A root that is not a directory is never writable.
+        """
+
+        return self.root.is_dir() and os.access(self.root, os.W_OK | os.X_OK)
 
     @property
     def config(self) -> Config:
@@ -662,6 +674,7 @@ class FilekeeperService:
         self,
         patch_text: str,
         *,
+        expected_hash: str | None = None,
         allow_sensitive_write: bool = False,
         dry_run: bool = False,
         actor: str | None = None,
@@ -670,6 +683,7 @@ class FilekeeperService:
         return operations.edit.apply_patch(
             self.handle,
             patch_text,
+            expected_hash=expected_hash,
             allow_sensitive_write=allow_sensitive_write,
             dry_run=dry_run,
             journal=self._journal_for(dry_run),

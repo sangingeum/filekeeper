@@ -11,7 +11,11 @@ import copy
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:  # pragma: no cover - typing only, never imported at runtime
+    from .paths import ResolvedPath
 
 
 class ErrorCode(StrEnum):
@@ -316,17 +320,36 @@ class NotImplementedYetError(FilekeeperError, NotImplementedError):
     code = ErrorCode.NOT_IMPLEMENTED_YET
 
 
-def storage_failure(action: str, path: str, exc: OSError) -> StorageError:
+def location_details(absolute: str | Path, root: str | Path) -> dict[str, str]:
+    """Name where a caller's path resolved and the workspace root it resolved in.
+
+    A caller cannot otherwise tell where its path went: on a workspace rooted at
+    the filesystem root a relative path resolves against ``/``, so ``runs/x``
+    becomes ``/runs/x``. Both fields stay in ``details`` so the message stays
+    short and the diagnosis takes one step.
+    """
+
+    return {"resolved_path": str(absolute), "workspace_root": str(root)}
+
+
+def storage_failure(
+    action: str,
+    path: str,
+    exc: OSError,
+    *,
+    location: ResolvedPath | None = None,
+) -> StorageError:
     """Build the :class:`StorageError` for a failed filesystem call on ``path``.
 
     ``path`` is the caller-facing path: the workspace-relative form for anything
     inside a workspace. An ``OSError``'s own message embeds the resolved host
     path, so only its standard reason phrase is carried into the message.
 
-    Guaranteed: a workspace file or directory is never named by its resolved
-    host path in a :class:`StorageError`, neither in the message nor in
-    ``details``. Every construction site that has a workspace path in hand
-    passes the relative form, and :func:`filekeeper.core.safety.hashing.hash_file`
+    Guaranteed: the message never names a workspace file by its resolved host
+    path. When the caller passes the ``location`` it resolved, ``details`` gains
+    ``resolved_path`` and ``workspace_root`` — the diagnosis without the leak of
+    a host path into prose. Every construction site that has a workspace path in
+    hand passes the relative form, and :func:`filekeeper.core.safety.hashing.hash_file`
     never falls back to the resolved path.
 
     Not covered: locations the operator chooses rather than workspace content —
@@ -335,5 +358,8 @@ def storage_failure(action: str, path: str, exc: OSError) -> StorageError:
     still carries only the reason phrase.
     """
 
+    details: dict[str, Any] = {"path": path}
+    if location is not None:
+        details.update(location_details(location.absolute, location.root))
     reason = exc.strerror or type(exc).__name__
-    return StorageError(f"cannot {action} {path}: {reason}", details={"path": path})
+    return StorageError(f"cannot {action} {path}: {reason}", details=details)

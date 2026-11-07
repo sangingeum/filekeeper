@@ -8,7 +8,8 @@ import pytest
 
 from filekeeper.core import operations
 from filekeeper.core.diffing import unified_diff_text
-from filekeeper.core.errors import PatchFailedError, StorageError
+from filekeeper.core.errors import ContentConflictError, PatchFailedError, StorageError
+from filekeeper.core.safety.hashing import hash_bytes
 
 
 def _write(root: Path, name: str, content: str) -> Path:
@@ -191,3 +192,93 @@ def test_an_invalid_patch_is_rejected_before_anything_is_touched(
 
     assert caught.value.details["reason"] == "syntax"
     assert target.read_bytes() == before
+
+
+def test_a_hunk_matching_only_elsewhere_is_refused_with_its_true_position(
+    service, workspace_root: Path
+) -> None:
+    """A stale hunk header is a refusal, never a relocation.
+
+    The hunk declares line 4 while its context occurs once, at line 7. Applying
+    the change there would edit a place the caller never named and report
+    success, so the refusal carries the position where the context actually is.
+    """
+
+    target = _write(
+        workspace_root, "a.txt", "one\ntwo\nthree\nfour\nfive\nsix\nunique-context\neight\n"
+    )
+    before = target.read_bytes()
+    patch = "--- a/a.txt\n+++ b/a.txt\n@@ -4,1 +4,1 @@\n-unique-context\n+CHANGED\n"
+
+    with pytest.raises(PatchFailedError) as caught:
+        service.apply_patch(patch)
+
+    details = caught.value.details
+    assert details["reason"] == "preimage_elsewhere"
+    assert details["declared_start"] == 4
+    assert details["positions"] == [7]
+    assert "line 7" in caught.value.message
+    assert target.read_bytes() == before
+    assert service.list_history() == ()
+
+
+def test_a_hunk_that_matches_at_its_declared_line_still_applies(
+    service, workspace_root: Path
+) -> None:
+    target = _write(workspace_root, "a.txt", "one\ntwo\nthree\nfour\n")
+    patch = "--- a/a.txt\n+++ b/a.txt\n@@ -3,1 +3,1 @@\n-three\n+THREE\n"
+
+    result = service.apply_patch(patch)
+
+    assert [hunk.status for hunk in result.patch_files[0].hunks] == ["applied"]
+    assert target.read_text(encoding="utf-8") == "one\ntwo\nTHREE\nfour\n"
+
+
+def test_a_stale_expected_hash_refuses_the_patch_untouched(
+    service, workspace_root: Path
+) -> None:
+    target = _write(workspace_root, "a.txt", "one\n")
+    before = target.read_bytes()
+    patch = _patch("a.txt", "one\n", "ONE\n")
+    stale = "sha256:" + "0" * 64
+
+    with pytest.raises(ContentConflictError) as caught:
+        service.apply_patch(patch, expected_hash=stale)
+
+    details = caught.value.details
+    assert details["path"] == "a.txt"
+    assert details["expected_hash"] == stale
+    assert details["actual_hash"] == hash_bytes(before)
+    assert target.read_bytes() == before
+    assert service.list_history() == ()
+
+
+def test_a_matching_expected_hash_applies_the_patch(service, workspace_root: Path) -> None:
+    target = _write(workspace_root, "a.txt", "one\n")
+    digest = hash_bytes(target.read_bytes())
+
+    result = service.apply_patch(_patch("a.txt", "one\n", "ONE\n"), expected_hash=digest)
+
+    assert result.affected_count == 1
+    assert target.read_text(encoding="utf-8") == "ONE\n"
+
+
+def test_a_later_file_that_cannot_apply_leaves_every_earlier_file_untouched(
+    service, workspace_root: Path
+) -> None:
+    """Planning covers every file before the first write, so file 2 failing is not
+    a partial application: file 1 keeps its bytes and no operation is recorded."""
+
+    first = _write(workspace_root, "a.txt", "one\n")
+    second = _write(workspace_root, "b.txt", "red\ngreen\n")
+    patch = _patch("a.txt", "one\n", "ONE\n") + (
+        "--- a/b.txt\n+++ b/b.txt\n@@ -1,1 +1,1 @@\n-absent\n+replaced\n"
+    )
+
+    with pytest.raises(PatchFailedError) as caught:
+        service.apply_patch(patch)
+
+    assert caught.value.details["reason"] == "preimage_missing"
+    assert first.read_text(encoding="utf-8") == "one\n"
+    assert second.read_text(encoding="utf-8") == "red\ngreen\n"
+    assert service.list_history() == ()

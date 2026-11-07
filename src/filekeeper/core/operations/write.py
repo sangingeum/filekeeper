@@ -34,6 +34,7 @@ from ..errors import (
     StorageError,
     SymlinkWriteRefusedError,
     ValidationError,
+    location_details,
     override_hint,
     storage_failure,
 )
@@ -224,6 +225,7 @@ def _after_write(
                 mode=_target_mode(resolved),
                 fsync=handle.config.fsync,
                 display_path=resolved.relative,
+                details=location_details(resolved.absolute, resolved.root),
             )
         except FilekeeperError:
             if journal is not None and operation_id is not None:

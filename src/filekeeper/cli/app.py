@@ -308,6 +308,11 @@ def build_parser() -> argparse.ArgumentParser:
     apply_patch_parser.add_argument("patch_file", nargs="?", metavar="PATCH")
     apply_patch_parser.add_argument("--dry-run", action="store_true")
     apply_patch_parser.add_argument(
+        "--expected-hash",
+        metavar="HASH",
+        help="refuse unless the patch's first file section matches this hash",
+    )
+    apply_patch_parser.add_argument(
         "--i-accept-secret-write-risk",
         action="store_true",
         dest="allow_sensitive_write",
@@ -772,6 +777,7 @@ def _handle_apply_patch(context: _Context) -> int:
             ) from exc
     result = context.service.apply_patch(
         patch_text,
+        expected_hash=context.args.expected_hash,
         allow_sensitive_write=context.args.allow_sensitive_write,
         dry_run=context.args.dry_run,
         actor=getattr(context.args, "actor", None),
