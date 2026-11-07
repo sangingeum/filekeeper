@@ -1,5 +1,6 @@
 # Filekeeper's own per-workspace state
 .filekeeper/
+runs/
 
 # Python
 __pycache__/

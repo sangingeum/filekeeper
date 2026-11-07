@@ -40,7 +40,7 @@ def test_text_that_legitimately_contains_a_slash_is_untouched() -> None:
 
 
 def test_a_bare_slash_is_never_scrubbed() -> None:
-    assert scrub_text("home/keum/.ssh/id_rsa", ("/",)) == "home/keum/.ssh/id_rsa"
+    assert scrub_text("home/user/.ssh/id_rsa", ("/",)) == "home/user/.ssh/id_rsa"
 
 
 def test_a_genuine_host_prefix_is_still_scrubbed() -> None:
