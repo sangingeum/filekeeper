@@ -6,6 +6,10 @@ All notable changes to this project are recorded here. The format follows
 
 ## Unreleased
 
+Nothing yet.
+
+## 0.1.9 — 2026-11-09
+
 ### Added
 
 - `file_apply_patch` accepts `expected_hash` (CLI `--expected-hash`, MCP
